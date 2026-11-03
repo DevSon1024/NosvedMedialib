@@ -9,13 +9,42 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 
 @UnstableApi
-class FFmpegRenderersFactory(
+open class FFmpegRenderersFactory(
     context: Context,
-    private val softwareDecoderPriority: SoftwareDecoderPriority = SoftwareDecoderPriority.FALLBACK,
-    private val decoderConfig: VideoDecoderConfig = VideoDecoderConfig(),
-    private val selectionListener: DecoderSelectionListener? = null,
-    private val diagnosticsListener: PlaybackDiagnosticsListener? = null
+    private var softwareDecoderPriority: SoftwareDecoderPriority = SoftwareDecoderPriority.FALLBACK,
+    private var decoderConfig: VideoDecoderConfig = VideoDecoderConfig(),
+    private var selectionListener: DecoderSelectionListener? = null,
+    private var diagnosticsListener: PlaybackDiagnosticsListener? = null
 ) : DefaultRenderersFactory(context) {
+
+    private var priorityExplicit: Boolean = false
+
+    init {
+        if (softwareDecoderPriority != SoftwareDecoderPriority.FALLBACK) {
+            priorityExplicit = true
+        }
+    }
+
+    fun setSoftwareDecoderPriority(priority: SoftwareDecoderPriority): FFmpegRenderersFactory {
+        this.softwareDecoderPriority = priority
+        this.priorityExplicit = true
+        return this
+    }
+
+    fun setDecoderConfig(config: VideoDecoderConfig): FFmpegRenderersFactory {
+        this.decoderConfig = config
+        return this
+    }
+
+    fun setSelectionListener(listener: DecoderSelectionListener?): FFmpegRenderersFactory {
+        this.selectionListener = listener
+        return this
+    }
+
+    fun setDiagnosticsListener(listener: PlaybackDiagnosticsListener?): FFmpegRenderersFactory {
+        this.diagnosticsListener = listener
+        return this
+    }
 
     override fun buildVideoRenderers(
         context: Context,
@@ -44,7 +73,17 @@ class FFmpegRenderersFactory(
             diagnosticsListener = diagnosticsListener
         )
 
-        when (softwareDecoderPriority) {
+        val effectivePriority = if (priorityExplicit) {
+            softwareDecoderPriority
+        } else {
+            when (extensionRendererMode) {
+                EXTENSION_RENDERER_MODE_OFF -> SoftwareDecoderPriority.DISABLED
+                EXTENSION_RENDERER_MODE_PREFER -> SoftwareDecoderPriority.PREFER
+                else -> SoftwareDecoderPriority.FALLBACK
+            }
+        }
+
+        when (effectivePriority) {
             SoftwareDecoderPriority.PREFER -> {
                 out.add(dav1dRenderer)
                 out.add(ffmpegRenderer)
