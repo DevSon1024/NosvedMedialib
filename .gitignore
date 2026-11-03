@@ -18,6 +18,11 @@ local.properties
 native-codecs/src/main/cpp/third_party/ffmpeg-*/
 native-codecs/src/main/cpp/third_party/ffmpeg_build/
 native-codecs/src/main/cpp/third_party/ffmpeg_install/
+
+# dav1d source archives, extracted sources, and temporary build outputs
+native-codecs/src/main/cpp/third_party/dav1d-*/
+native-codecs/src/main/cpp/third_party/dav1d_build/
+native-codecs/src/main/cpp/third_party/dav1d_install/
 native-codecs/src/main/cpp/third_party/*.tar.*
 native-codecs/src/main/cpp/third_party/*.zip
 

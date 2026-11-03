@@ -178,6 +178,83 @@ class NativeLib {
     private external fun nativeGetFormatVersion(): Int
     private external fun nativeGetUtilVersion(): Int
 
+    fun getDav1dVersion(): String {
+        if (!isLibraryLoaded) {
+            return "unavailable"
+        }
+        return try {
+            nativeGetDav1dVersion()
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to get dav1d version", e)
+            "unknown"
+        }
+    }
+
+    fun createDav1dDecoder(width: Int = 0, height: Int = 0, nThreads: Int = 0): Long {
+        if (!isLibraryLoaded) return 0L
+        return try {
+            nativeCreateDav1dDecoder(width, height, nThreads)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to create dav1d decoder", e)
+            0L
+        }
+    }
+
+    fun decodeDav1d(
+        handle: Long,
+        buffer: ByteBuffer?,
+        offset: Int,
+        length: Int,
+        timeUs: Long,
+        isEos: Boolean
+    ): Int {
+        if (!isLibraryLoaded || handle == 0L) return -1
+        return try {
+            nativeDecodeDav1d(handle, buffer, offset, length, timeUs, isEos)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "dav1d decode call failed", e)
+            -1
+        }
+    }
+
+    fun getDav1dFrameInfo(handle: Long, outInfo: IntArray): Boolean {
+        if (!isLibraryLoaded || handle == 0L || outInfo.size < 5) return false
+        return try {
+            nativeGetDav1dFrameInfo(handle, outInfo)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to get dav1d frame info", e)
+            false
+        }
+    }
+
+    fun renderDav1dFrameToSurface(handle: Long, surface: Surface): Boolean {
+        if (!isLibraryLoaded || handle == 0L) return false
+        return try {
+            nativeRenderDav1dFrameToSurface(handle, surface)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to render dav1d frame to surface", e)
+            false
+        }
+    }
+
+    fun flushDav1dDecoder(handle: Long) {
+        if (!isLibraryLoaded || handle == 0L) return
+        try {
+            nativeFlushDav1dDecoder(handle)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to flush dav1d decoder", e)
+        }
+    }
+
+    fun releaseDav1dDecoder(handle: Long) {
+        if (!isLibraryLoaded || handle == 0L) return
+        try {
+            nativeReleaseDav1dDecoder(handle)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to release dav1d decoder", e)
+        }
+    }
+
     private external fun nativeCreateVideoDecoder(
         mimeType: String,
         extraData: ByteArray?,
@@ -207,6 +284,21 @@ class NativeLib {
     private external fun nativeFlushVideoDecoder(handle: Long)
     private external fun nativeReleaseVideoDecoder(handle: Long)
 
+    private external fun nativeGetDav1dVersion(): String
+    private external fun nativeCreateDav1dDecoder(width: Int, height: Int, nThreads: Int): Long
+    private external fun nativeDecodeDav1d(
+        handle: Long,
+        buffer: ByteBuffer?,
+        offset: Int,
+        length: Int,
+        timeUs: Long,
+        isEos: Boolean
+    ): Int
+    private external fun nativeGetDav1dFrameInfo(handle: Long, outInfo: IntArray): Boolean
+    private external fun nativeRenderDav1dFrameToSurface(handle: Long, surface: Surface): Boolean
+    private external fun nativeFlushDav1dDecoder(handle: Long)
+    private external fun nativeReleaseDav1dDecoder(handle: Long)
+
     companion object {
         private const val TAG = "NosvedNativeLib"
 
@@ -225,6 +317,7 @@ class NativeLib {
                 "swscale",
                 "avcodec",
                 "avformat",
+                "dav1d",
                 "native_codecs"
             )
 

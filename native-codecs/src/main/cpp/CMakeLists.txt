@@ -6,10 +6,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(FFMPEG_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ffmpeg/include)
+set(DAV1D_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/dav1d/include)
 set(FFMPEG_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI})
 
 include_directories(
     ${FFMPEG_INCLUDE_DIR}
+    ${DAV1D_INCLUDE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/jni
     ${CMAKE_CURRENT_SOURCE_DIR}/core
     ${CMAKE_CURRENT_SOURCE_DIR}/common
@@ -33,11 +35,16 @@ set_target_properties(avcodec PROPERTIES IMPORTED_LOCATION ${FFMPEG_LIB_DIR}/lib
 add_library(avformat SHARED IMPORTED)
 set_target_properties(avformat PROPERTIES IMPORTED_LOCATION ${FFMPEG_LIB_DIR}/libavformat.so)
 
+# Imported dav1d shared library
+add_library(dav1d SHARED IMPORTED)
+set_target_properties(dav1d PROPERTIES IMPORTED_LOCATION ${FFMPEG_LIB_DIR}/libdav1d.so)
+
 # Native codecs library
 add_library(${CMAKE_PROJECT_NAME} SHARED
     jni/native_bridge.cpp
     core/ffmpeg_init.cpp
     video/ffmpeg_video_decoder.cpp
+    video/dav1d_video_decoder.cpp
 )
 
 target_link_libraries(${CMAKE_PROJECT_NAME}
@@ -46,6 +53,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     avutil
     swresample
     swscale
+    dav1d
     android
     log
 )

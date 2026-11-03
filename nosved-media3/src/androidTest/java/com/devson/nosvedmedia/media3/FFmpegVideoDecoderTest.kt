@@ -38,7 +38,7 @@ class FFmpegVideoDecoderTest {
         assertTrue(VideoDecoderCapabilities.isMimeTypeSupported(MimeTypes.VIDEO_MP4V))
         assertTrue(VideoDecoderCapabilities.isMimeTypeSupported(MimeTypes.VIDEO_MPEG2))
 
-        assertFalse(VideoDecoderCapabilities.isMimeTypeSupported(MimeTypes.VIDEO_AV1))
+        assertTrue(VideoDecoderCapabilities.isMimeTypeSupported(MimeTypes.VIDEO_AV1))
         assertFalse(VideoDecoderCapabilities.isMimeTypeSupported("video/unknown-codec"))
     }
 
@@ -245,7 +245,8 @@ class FFmpegVideoDecoderTest {
         val preferVideoRenderers = preferRenderers.filter { it.trackType == C.TRACK_TYPE_VIDEO }
         assertTrue(preferVideoRenderers.isNotEmpty())
         val firstVideoRenderer = preferVideoRenderers.firstOrNull()
-        assertTrue("First video renderer should be FFmpegVideoRenderer for PREFER", firstVideoRenderer is FFmpegVideoRenderer)
+        val isSoftwareDecoder = firstVideoRenderer is FFmpegVideoRenderer || firstVideoRenderer is Dav1dVideoRenderer
+        assertTrue("First video renderer should be a software decoder for PREFER", isSoftwareDecoder)
 
         val disabledFactory = FFmpegRenderersFactory(
             context = context,

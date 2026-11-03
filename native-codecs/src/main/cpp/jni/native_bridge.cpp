@@ -4,6 +4,7 @@
 #include <android/native_window_jni.h>
 #include "../core/ffmpeg_init.h"
 #include "../video/ffmpeg_video_decoder.h"
+#include "../video/dav1d_video_decoder.h"
 #include "../common/logging.h"
 
 static JavaVM* g_vm = nullptr;
@@ -237,6 +238,118 @@ Java_com_devson_native_1codecs_NativeLib_nativeReleaseVideoDecoder(
         jlong handle) {
     if (handle == 0L) return;
     auto* decoder = reinterpret_cast<nosved::FfmpegVideoDecoder*>(handle);
+    delete decoder;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_devson_native_1codecs_NativeLib_nativeGetDav1dVersion(
+        JNIEnv* env,
+        jobject /* this */) {
+    const char* ver = nosved::Dav1dVideoDecoder::getVersion();
+    return env->NewStringUTF(ver ? ver : "unknown");
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_devson_native_1codecs_NativeLib_nativeCreateDav1dDecoder(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jint width,
+        jint height,
+        jint nThreads) {
+    auto decoder = std::make_unique<nosved::Dav1dVideoDecoder>();
+    if (!decoder->open(width, height, nThreads)) {
+        LOGE("Failed to open dav1d decoder");
+        return 0L;
+    }
+    return reinterpret_cast<jlong>(decoder.release());
+}
+
+JNIEXPORT jint JNICALL
+Java_com_devson_native_1codecs_NativeLib_nativeDecodeDav1d(
+        JNIEnv* env,
+        jobject /* this */,
+        jlong handle,
+        jobject jByteBuffer,
+        jint offset,
+        jint length,
+        jlong ptsUs,
+        jboolean isEos) {
+    if (handle == 0L) return -EINVAL;
+    auto* decoder = reinterpret_cast<nosved::Dav1dVideoDecoder*>(handle);
+
+    const uint8_t* packetData = nullptr;
+    if (jByteBuffer && length > 0) {
+        auto* directBuffer = static_cast<uint8_t*>(env->GetDirectBufferAddress(jByteBuffer));
+        if (directBuffer) {
+            packetData = directBuffer + offset;
+        }
+    }
+
+    return decoder->decode(packetData, length, ptsUs, static_cast<bool>(isEos));
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_devson_native_1codecs_NativeLib_nativeGetDav1dFrameInfo(
+        JNIEnv* env,
+        jobject /* this */,
+        jlong handle,
+        jintArray jOutInfo) {
+    if (handle == 0L || !jOutInfo) return JNI_FALSE;
+    auto* decoder = reinterpret_cast<nosved::Dav1dVideoDecoder*>(handle);
+
+    nosved::VideoFrameInfo info;
+    if (!decoder->getFrameInfo(info)) {
+        return JNI_FALSE;
+    }
+
+    jint temp[5] = {
+        info.width,
+        info.height,
+        info.isKeyFrame ? 1 : 0,
+        info.format,
+        info.bitDepth
+    };
+    env->SetIntArrayRegion(jOutInfo, 0, 5, temp);
+    return JNI_TRUE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_devson_native_1codecs_NativeLib_nativeRenderDav1dFrameToSurface(
+        JNIEnv* env,
+        jobject /* this */,
+        jlong handle,
+        jobject jSurface) {
+    if (handle == 0L || !jSurface) return JNI_FALSE;
+    auto* decoder = reinterpret_cast<nosved::Dav1dVideoDecoder*>(handle);
+
+    ANativeWindow* window = ANativeWindow_fromSurface(env, jSurface);
+    if (!window) {
+        LOGE("Failed to obtain ANativeWindow from Surface for dav1d");
+        return JNI_FALSE;
+    }
+
+    bool success = decoder->renderToSurface(window);
+    ANativeWindow_release(window);
+    return static_cast<jboolean>(success);
+}
+
+JNIEXPORT void JNICALL
+Java_com_devson_native_1codecs_NativeLib_nativeFlushDav1dDecoder(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle) {
+    if (handle == 0L) return;
+    auto* decoder = reinterpret_cast<nosved::Dav1dVideoDecoder*>(handle);
+    decoder->flush();
+}
+
+JNIEXPORT void JNICALL
+Java_com_devson_native_1codecs_NativeLib_nativeReleaseDav1dDecoder(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle) {
+    if (handle == 0L) return;
+    auto* decoder = reinterpret_cast<nosved::Dav1dVideoDecoder*>(handle);
     delete decoder;
 }
 

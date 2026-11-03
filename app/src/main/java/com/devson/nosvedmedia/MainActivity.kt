@@ -27,8 +27,9 @@ class MainActivity : AppCompatActivity() {
         statusText = findViewById(R.id.statusText)
 
         val nativeLib = NativeLib()
-        val ffmpegVersion = nativeLib.getFFmpegVersion() ?: "Unknown"
-        statusText?.text = "NosvedMedia FFmpeg $ffmpegVersion | Ready"
+        val ffmpegVersion = nativeLib.getFFmpegVersion()
+        val dav1dVersion = nativeLib.getDav1dVersion()
+        statusText?.text = "NosvedMedia FFmpeg $ffmpegVersion | dav1d $dav1dVersion | Ready"
 
         initializePlayer()
     }

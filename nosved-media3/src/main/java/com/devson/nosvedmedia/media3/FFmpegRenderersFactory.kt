@@ -26,6 +26,12 @@ class FFmpegRenderersFactory(
         allowedVideoJoiningTimeMs: Long,
         out: ArrayList<Renderer>
     ) {
+        val dav1dRenderer = Dav1dVideoRenderer(
+            allowedJoiningTimeMs = allowedVideoJoiningTimeMs,
+            eventHandler = eventHandler,
+            eventListener = eventListener,
+            config = decoderConfig
+        )
         val ffmpegRenderer = FFmpegVideoRenderer(
             allowedJoiningTimeMs = allowedVideoJoiningTimeMs,
             eventHandler = eventHandler,
@@ -35,6 +41,7 @@ class FFmpegRenderersFactory(
 
         when (softwareDecoderPriority) {
             SoftwareDecoderPriority.PREFER -> {
+                out.add(dav1dRenderer)
                 out.add(ffmpegRenderer)
                 super.buildVideoRenderers(
                     context,
@@ -58,6 +65,7 @@ class FFmpegRenderersFactory(
                     allowedVideoJoiningTimeMs,
                     out
                 )
+                out.add(dav1dRenderer)
                 out.add(ffmpegRenderer)
             }
             SoftwareDecoderPriority.DISABLED -> {

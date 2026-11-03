@@ -15,6 +15,7 @@ struct VideoFrameInfo {
     int height = 0;
     int64_t pts = 0;
     int format = -1;
+    int bitDepth = 8;
     bool isKeyFrame = false;
 };
 

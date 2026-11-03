@@ -183,3 +183,69 @@ former contains code derived from the library, whereas the latter must
 be combined with the library in order to run.
 ```
 
+
+
+---
+
+## 3. dav1d
+
+- **Component:** dav1d (AV1 Decoder)
+- **Version:** 1.5.0
+- **Upstream Website:** [https://code.videolan.org/videolan/dav1d](https://code.videolan.org/videolan/dav1d)
+- **Source Archive:** [https://downloads.videolan.org/pub/videolan/dav1d/1.5.0/dav1d-1.5.0.tar.xz](https://downloads.videolan.org/pub/videolan/dav1d/1.5.0/dav1d-1.5.0.tar.xz)
+- **Upstream Git:** `https://code.videolan.org/videolan/dav1d.git`
+- **License:** BSD 2-Clause License ("Simplified BSD License")
+
+### Audited Build Configuration
+
+dav1d was built using Android NDK LLVM/Clang (API 26+) for `arm64-v8a` via Meson and Ninja:
+
+```ini
+[binaries]
+c = ['${TOOLCHAIN}/bin/clang.exe', '--target=aarch64-linux-android26']
+cpp = ['${TOOLCHAIN}/bin/clang++.exe', '--target=aarch64-linux-android26']
+ar = '${TOOLCHAIN}/bin/llvm-ar.exe'
+strip = '${TOOLCHAIN}/bin/llvm-strip.exe'
+
+[host_machine]
+system = 'android'
+cpu_family = 'aarch64'
+cpu = 'armv8-a'
+endian = 'little'
+```
+
+Options: `--default-library shared --buildtype release -Denable_tools=false -Denable_examples=false -Denable_tests=false`. Full ARM64 NEON assembly optimizations enabled.
+
+### Licensing & Compliance Audit
+
+1. **Permissive Licensing:** The BSD 2-Clause license is a permissive open-source license that permits redistribution and use in source and binary forms, with or without modification, for commercial and proprietary software.
+2. **Distribution Requirements:** Requires preservation of the original copyright notice and disclaimer in binary distributions.
+3. **Compatibility:** Fully compatible with NosvedMedia AAR distribution and LGPL v2.1+ requirements.
+
+### BSD 2-Clause License Text
+
+```
+Copyright (c) 2018-2024, VideoLAN and dav1d authors
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```

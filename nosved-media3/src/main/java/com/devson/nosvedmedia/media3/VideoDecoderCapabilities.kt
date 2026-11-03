@@ -13,7 +13,8 @@ object VideoDecoderCapabilities {
         MimeTypes.VIDEO_VP8,
         MimeTypes.VIDEO_VP9,
         MimeTypes.VIDEO_MP4V,
-        MimeTypes.VIDEO_MPEG2
+        MimeTypes.VIDEO_MPEG2,
+        MimeTypes.VIDEO_AV1
     )
 
     fun isFormatSupported(format: Format): Boolean {

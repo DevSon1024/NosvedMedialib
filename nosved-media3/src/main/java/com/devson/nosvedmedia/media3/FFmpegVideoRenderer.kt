@@ -4,6 +4,7 @@ import android.os.Handler
 import android.view.Surface
 import androidx.media3.common.C
 import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.decoder.CryptoConfig
 import androidx.media3.decoder.Decoder
@@ -32,7 +33,8 @@ class FFmpegVideoRenderer(
     override fun getName(): String = "FFmpegVideoRenderer"
 
     override fun supportsFormat(format: Format): Int {
-        if (!VideoDecoderCapabilities.isFormatSupported(format)) {
+        val sampleMimeType = format.sampleMimeType
+        if (sampleMimeType == null || sampleMimeType == MimeTypes.VIDEO_AV1 || !VideoDecoderCapabilities.isFormatSupported(format)) {
             return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE)
         }
         return RendererCapabilities.create(
