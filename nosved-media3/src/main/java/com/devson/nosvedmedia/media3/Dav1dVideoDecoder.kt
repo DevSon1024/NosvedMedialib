@@ -14,7 +14,9 @@ import java.nio.ByteBuffer
 @UnstableApi
 class Dav1dVideoDecoder(
     val format: Format,
-    val config: VideoDecoderConfig = VideoDecoderConfig()
+    val config: VideoDecoderConfig = VideoDecoderConfig(),
+    val performanceMonitor: PerformanceMonitor? = null,
+    val diagnosticsListener: PlaybackDiagnosticsListener? = null
 ) : SimpleDecoder<DecoderInputBuffer, VideoDecoderOutputBuffer, FFmpegDecoderException>(
     Array(config.numInputBuffers) { DecoderInputBuffer(DecoderInputBuffer.BUFFER_REPLACEMENT_MODE_DIRECT) },
     Array(config.numOutputBuffers) { VideoDecoderOutputBuffer { /* outputBuffer -> releaseOutputBuffer(outputBuffer) */ } }
@@ -35,8 +37,26 @@ class Dav1dVideoDecoder(
 
         nativeHandle = nativeLib.createDav1dDecoder(width, height, 0)
         if (nativeHandle == 0L) {
+            val error = DecodingError(
+                decoderName = "Dav1dVideoDecoder",
+                errorCode = -1,
+                errorMessage = "Failed to initialize native dav1d AV1 decoder",
+                isFatal = true
+            )
+            diagnosticsListener?.onDecodingError(error)
             throw FFmpegDecoderException("Failed to initialize native dav1d AV1 decoder")
         }
+
+        diagnosticsListener?.onDecoderInitialized(
+            DecoderDiagnostics(
+                decoderName = "Dav1dVideoDecoder",
+                mimeType = MimeTypes.VIDEO_AV1,
+                width = width,
+                height = height,
+                bitDepth = 8,
+                isHardware = false
+            )
+        )
 
         setInitialInputBufferSize(config.initialInputBufferSize)
     }
@@ -83,6 +103,7 @@ class Dav1dVideoDecoder(
         val length = data?.remaining() ?: 0
         val offset = data?.position() ?: 0
 
+        val startTimeNs = System.nanoTime()
         val decodeResult = nativeLib.decodeDav1d(
             nativeHandle,
             data,
@@ -91,10 +112,20 @@ class Dav1dVideoDecoder(
             inputBuffer.timeUs,
             false
         )
+        val elapsedNs = System.nanoTime() - startTimeNs
+        performanceMonitor?.recordDecodeTime(elapsedNs)
 
         when {
             decodeResult < 0 -> {
                 val errorDesc = nativeLib.getErrorDescription(decodeResult)
+                diagnosticsListener?.onDecodingError(
+                    DecodingError(
+                        decoderName = "Dav1dVideoDecoder",
+                        errorCode = decodeResult,
+                        errorMessage = "dav1d decode failed: $errorDesc",
+                        isFatal = false
+                    )
+                )
                 return FFmpegDecoderException("dav1d decode failed: $errorDesc", errorCode = decodeResult)
             }
             decodeResult == 0 -> {

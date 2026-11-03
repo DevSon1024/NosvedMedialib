@@ -18,7 +18,7 @@ const char* Dav1dVideoDecoder::getVersion() {
 
 bool Dav1dVideoDecoder::open(int width, int height, int nThreads) {
     std::lock_guard<std::mutex> lock(mutex_);
-    close();
+    releaseResources();
 
     Dav1dSettings settings;
     dav1d_default_settings(&settings);
@@ -127,17 +127,12 @@ bool Dav1dVideoDecoder::renderToSurface(ANativeWindow* window) {
 
     AVPixelFormat srcFmt = (bpc == 10) ? AV_PIX_FMT_YUV420P10LE : AV_PIX_FMT_YUV420P;
 
-    if (!swsContext_ || swsSrcWidth_ != width || swsSrcHeight_ != height || swsSrcBpc_ != bpc) {
-        releaseSws();
-        swsContext_ = sws_getContext(
-            width, height, srcFmt,
-            width, height, AV_PIX_FMT_RGBA,
-            SWS_FAST_BILINEAR, nullptr, nullptr, nullptr
-        );
-        swsSrcWidth_ = width;
-        swsSrcHeight_ = height;
-        swsSrcBpc_ = bpc;
-    }
+    swsContext_ = sws_getCachedContext(
+        swsContext_,
+        width, height, srcFmt,
+        width, height, AV_PIX_FMT_RGBA,
+        SWS_FAST_BILINEAR, nullptr, nullptr, nullptr
+    );
 
     if (!swsContext_) {
         LOGE("Failed to create SwsContext for dav1d surface rendering");
@@ -173,13 +168,18 @@ void Dav1dVideoDecoder::flush() {
     }
 }
 
-void Dav1dVideoDecoder::close() {
+void Dav1dVideoDecoder::releaseResources() {
     releasePicture();
     releaseSws();
     if (context_) {
         dav1d_close(&context_);
         context_ = nullptr;
     }
+}
+
+void Dav1dVideoDecoder::close() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    releaseResources();
 }
 
 void Dav1dVideoDecoder::releasePicture() {

@@ -8,11 +8,17 @@
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
 .DS_Store
-/build
+build/
+**/build/
 /captures
 .externalNativeBuild
+**/.externalNativeBuild/
 .cxx
+**/.cxx/
 local.properties
+*.apk
+*.aab
+*.hprof
 
 # FFmpeg source archives, extracted sources, and temporary build outputs
 native-codecs/src/main/cpp/third_party/ffmpeg-*/
@@ -25,5 +31,7 @@ native-codecs/src/main/cpp/third_party/dav1d_build/
 native-codecs/src/main/cpp/third_party/dav1d_install/
 native-codecs/src/main/cpp/third_party/*.tar.*
 native-codecs/src/main/cpp/third_party/*.zip
+native-codecs/src/main/cpp/third_party/*.tgz
+native-codecs/src/main/cpp/third_party/*.7z
 
 update_details.md

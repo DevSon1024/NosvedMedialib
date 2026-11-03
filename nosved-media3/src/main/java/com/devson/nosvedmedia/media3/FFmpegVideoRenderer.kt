@@ -20,7 +20,9 @@ class FFmpegVideoRenderer(
     eventHandler: Handler? = null,
     eventListener: VideoRendererEventListener? = null,
     maxDroppedFramesToNotify: Int = 50,
-    private val config: VideoDecoderConfig = VideoDecoderConfig()
+    private val config: VideoDecoderConfig = VideoDecoderConfig(),
+    private val selectionListener: DecoderSelectionListener? = null,
+    private val diagnosticsListener: PlaybackDiagnosticsListener? = null
 ) : DecoderVideoRenderer(
     allowedJoiningTimeMs,
     eventHandler,
@@ -28,9 +30,12 @@ class FFmpegVideoRenderer(
     maxDroppedFramesToNotify
 ) {
 
+    private val performanceMonitor = PerformanceMonitor(diagnosticsListener)
     private var activeDecoder: FFmpegVideoDecoder? = null
 
     override fun getName(): String = "FFmpegVideoRenderer"
+
+    fun getPerformanceMetrics(): DecodingPerformanceMetrics = performanceMonitor.getSnapshot()
 
     override fun supportsFormat(format: Format): Int {
         val sampleMimeType = format.sampleMimeType
@@ -51,9 +56,20 @@ class FFmpegVideoRenderer(
         if (cryptoConfig != null) {
             throw FFmpegDecoderException("Encrypted content is not supported by FFmpeg software decoder")
         }
-        val decoder = FFmpegVideoDecoder(format, config)
+        selectionListener?.onDecoderSelected(getName(), true, format)
+        val decoder = FFmpegVideoDecoder(
+            format = format,
+            config = config,
+            performanceMonitor = performanceMonitor,
+            diagnosticsListener = diagnosticsListener
+        )
         activeDecoder = decoder
         return decoder
+    }
+
+    override fun dropOutputBuffer(outputBuffer: VideoDecoderOutputBuffer) {
+        performanceMonitor.recordDroppedFrame()
+        super.dropOutputBuffer(outputBuffer)
     }
 
     override fun renderOutputBufferToSurface(

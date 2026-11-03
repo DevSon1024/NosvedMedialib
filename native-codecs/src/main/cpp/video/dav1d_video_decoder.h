@@ -32,6 +32,7 @@ public:
     static const char* getVersion();
 
 private:
+    void releaseResources();
     void releasePicture();
     void releaseSws();
 

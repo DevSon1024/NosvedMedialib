@@ -92,8 +92,12 @@ int FfmpegVideoDecoder::decode(const uint8_t* packetData, int packetSize, int64_
         }
     } else if (packetData && packetSize > 0) {
         av_packet_unref(packet_);
-        packet_->data = const_cast<uint8_t*>(packetData);
-        packet_->size = packetSize;
+        int allocRet = av_new_packet(packet_, packetSize);
+        if (allocRet < 0) {
+            LOGE("av_new_packet failed: %d", allocRet);
+            return allocRet;
+        }
+        std::memcpy(packet_->data, packetData, packetSize);
         packet_->pts = ptsUs;
         packet_->dts = ptsUs;
 

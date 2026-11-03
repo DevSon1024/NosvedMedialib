@@ -20,7 +20,9 @@ class Dav1dVideoRenderer(
     eventHandler: Handler? = null,
     eventListener: VideoRendererEventListener? = null,
     maxDroppedFramesToNotify: Int = 50,
-    private val config: VideoDecoderConfig = VideoDecoderConfig()
+    private val config: VideoDecoderConfig = VideoDecoderConfig(),
+    private val selectionListener: DecoderSelectionListener? = null,
+    private val diagnosticsListener: PlaybackDiagnosticsListener? = null
 ) : DecoderVideoRenderer(
     allowedJoiningTimeMs,
     eventHandler,
@@ -28,9 +30,12 @@ class Dav1dVideoRenderer(
     maxDroppedFramesToNotify
 ) {
 
+    private val performanceMonitor = PerformanceMonitor(diagnosticsListener)
     private var activeDecoder: Dav1dVideoDecoder? = null
 
     override fun getName(): String = "Dav1dVideoRenderer"
+
+    fun getPerformanceMetrics(): DecodingPerformanceMetrics = performanceMonitor.getSnapshot()
 
     override fun supportsFormat(format: Format): Int {
         if (format.sampleMimeType != MimeTypes.VIDEO_AV1) {
@@ -50,9 +55,20 @@ class Dav1dVideoRenderer(
         if (cryptoConfig != null) {
             throw FFmpegDecoderException("Encrypted content is not supported by dav1d software decoder")
         }
-        val decoder = Dav1dVideoDecoder(format, config)
+        selectionListener?.onDecoderSelected(getName(), true, format)
+        val decoder = Dav1dVideoDecoder(
+            format = format,
+            config = config,
+            performanceMonitor = performanceMonitor,
+            diagnosticsListener = diagnosticsListener
+        )
         activeDecoder = decoder
         return decoder
+    }
+
+    override fun dropOutputBuffer(outputBuffer: VideoDecoderOutputBuffer) {
+        performanceMonitor.recordDroppedFrame()
+        super.dropOutputBuffer(outputBuffer)
     }
 
     override fun renderOutputBufferToSurface(

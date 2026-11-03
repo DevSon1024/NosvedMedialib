@@ -13,7 +13,8 @@ class FFmpegRenderersFactory(
     context: Context,
     private val softwareDecoderPriority: SoftwareDecoderPriority = SoftwareDecoderPriority.FALLBACK,
     private val decoderConfig: VideoDecoderConfig = VideoDecoderConfig(),
-    private val selectionListener: DecoderSelectionListener? = null
+    private val selectionListener: DecoderSelectionListener? = null,
+    private val diagnosticsListener: PlaybackDiagnosticsListener? = null
 ) : DefaultRenderersFactory(context) {
 
     override fun buildVideoRenderers(
@@ -30,13 +31,17 @@ class FFmpegRenderersFactory(
             allowedJoiningTimeMs = allowedVideoJoiningTimeMs,
             eventHandler = eventHandler,
             eventListener = eventListener,
-            config = decoderConfig
+            config = decoderConfig,
+            selectionListener = selectionListener,
+            diagnosticsListener = diagnosticsListener
         )
         val ffmpegRenderer = FFmpegVideoRenderer(
             allowedJoiningTimeMs = allowedVideoJoiningTimeMs,
             eventHandler = eventHandler,
             eventListener = eventListener,
-            config = decoderConfig
+            config = decoderConfig,
+            selectionListener = selectionListener,
+            diagnosticsListener = diagnosticsListener
         )
 
         when (softwareDecoderPriority) {
