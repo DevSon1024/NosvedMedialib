@@ -21,6 +21,10 @@ android {
 }
 
 dependencies {
+    api(project(":native-codecs"))
+    api(libs.androidx.media3.exoplayer)
+    api(libs.androidx.media3.common)
+    api(libs.androidx.media3.decoder)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)

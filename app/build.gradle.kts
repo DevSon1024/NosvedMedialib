@@ -33,6 +33,8 @@ android {
 }
 
 dependencies {
+    implementation(project(":nosved-media3"))
+    implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)

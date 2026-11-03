@@ -1,6 +1,9 @@
 #include <jni.h>
 #include <string>
+#include <android/native_window.h>
+#include <android/native_window_jni.h>
 #include "../core/ffmpeg_init.h"
+#include "../video/ffmpeg_video_decoder.h"
 #include "../common/logging.h"
 
 static JavaVM* g_vm = nullptr;
@@ -100,5 +103,141 @@ Java_com_devson_native_1codecs_NativeLib_nativeGetUtilVersion(
     return static_cast<jint>(nosved::FfmpegInit::getInstance().getUtilVersion());
 }
 
-} // extern "C"
+// Video Decoder JNI methods
 
+JNIEXPORT jlong JNICALL
+Java_com_devson_native_1codecs_NativeLib_nativeCreateVideoDecoder(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring jMimeType,
+        jbyteArray jExtraData,
+        jint width,
+        jint height) {
+    if (!jMimeType) return 0L;
+
+    const char* mimeChars = env->GetStringUTFChars(jMimeType, nullptr);
+    if (!mimeChars) return 0L;
+    std::string mimeType(mimeChars);
+    env->ReleaseStringUTFChars(jMimeType, mimeChars);
+
+    uint8_t* extraDataPtr = nullptr;
+    int extraDataSize = 0;
+    jbyte* byteElements = nullptr;
+
+    if (jExtraData) {
+        extraDataSize = env->GetArrayLength(jExtraData);
+        if (extraDataSize > 0) {
+            byteElements = env->GetByteArrayElements(jExtraData, nullptr);
+            extraDataPtr = reinterpret_cast<uint8_t*>(byteElements);
+        }
+    }
+
+    auto* decoder = new (std::nothrow) nosved::FfmpegVideoDecoder();
+    if (!decoder) {
+        if (byteElements) env->ReleaseByteArrayElements(jExtraData, byteElements, JNI_ABORT);
+        return 0L;
+    }
+
+    bool ok = decoder->open(mimeType, extraDataPtr, extraDataSize, width, height);
+
+    if (byteElements) {
+        env->ReleaseByteArrayElements(jExtraData, byteElements, JNI_ABORT);
+    }
+
+    if (!ok) {
+        delete decoder;
+        return 0L;
+    }
+
+    return reinterpret_cast<jlong>(decoder);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_devson_native_1codecs_NativeLib_nativeDecodeVideo(
+        JNIEnv* env,
+        jobject /* this */,
+        jlong handle,
+        jobject jByteBuffer,
+        jint offset,
+        jint length,
+        jlong timeUs,
+        jboolean isEos) {
+    if (handle == 0L) return -1;
+    auto* decoder = reinterpret_cast<nosved::FfmpegVideoDecoder*>(handle);
+
+    const uint8_t* data = nullptr;
+    if (jByteBuffer && length > 0) {
+        auto* directAddress = static_cast<uint8_t*>(env->GetDirectBufferAddress(jByteBuffer));
+        if (directAddress) {
+            data = directAddress + offset;
+        }
+    }
+
+    return decoder->decode(data, length, timeUs, isEos == JNI_TRUE);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_devson_native_1codecs_NativeLib_nativeGetVideoFrameInfo(
+        JNIEnv* env,
+        jobject /* this */,
+        jlong handle,
+        jintArray jOutInfo) {
+    if (handle == 0L || !jOutInfo) return JNI_FALSE;
+    auto* decoder = reinterpret_cast<nosved::FfmpegVideoDecoder*>(handle);
+
+    nosved::VideoFrameInfo info;
+    if (!decoder->getLatestFrameInfo(&info)) {
+        return JNI_FALSE;
+    }
+
+    jint temp[4] = {
+        info.width,
+        info.height,
+        info.isKeyFrame ? 1 : 0,
+        info.format
+    };
+    env->SetIntArrayRegion(jOutInfo, 0, 4, temp);
+    return JNI_TRUE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_devson_native_1codecs_NativeLib_nativeRenderVideoFrameToSurface(
+        JNIEnv* env,
+        jobject /* this */,
+        jlong handle,
+        jobject jSurface) {
+    if (handle == 0L || !jSurface) return JNI_FALSE;
+    auto* decoder = reinterpret_cast<nosved::FfmpegVideoDecoder*>(handle);
+
+    ANativeWindow* window = ANativeWindow_fromSurface(env, jSurface);
+    if (!window) {
+        LOGE("Failed to obtain ANativeWindow from Surface");
+        return JNI_FALSE;
+    }
+
+    bool success = decoder->renderToSurface(window);
+    ANativeWindow_release(window);
+    return static_cast<jboolean>(success);
+}
+
+JNIEXPORT void JNICALL
+Java_com_devson_native_1codecs_NativeLib_nativeFlushVideoDecoder(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle) {
+    if (handle == 0L) return;
+    auto* decoder = reinterpret_cast<nosved::FfmpegVideoDecoder*>(handle);
+    decoder->flush();
+}
+
+JNIEXPORT void JNICALL
+Java_com_devson_native_1codecs_NativeLib_nativeReleaseVideoDecoder(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle) {
+    if (handle == 0L) return;
+    auto* decoder = reinterpret_cast<nosved::FfmpegVideoDecoder*>(handle);
+    delete decoder;
+}
+
+} // extern "C"

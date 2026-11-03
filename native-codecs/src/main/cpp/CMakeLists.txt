@@ -37,6 +37,7 @@ set_target_properties(avformat PROPERTIES IMPORTED_LOCATION ${FFMPEG_LIB_DIR}/li
 add_library(${CMAKE_PROJECT_NAME} SHARED
     jni/native_bridge.cpp
     core/ffmpeg_init.cpp
+    video/ffmpeg_video_decoder.cpp
 )
 
 target_link_libraries(${CMAKE_PROJECT_NAME}
