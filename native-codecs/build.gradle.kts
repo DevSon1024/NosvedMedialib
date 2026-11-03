@@ -12,9 +12,13 @@ android {
         minSdk = 26
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        ndk {
+            abiFilters.add("arm64-v8a")
+        }
         externalNativeBuild {
             cmake {
                 cppFlags("-std=c++17")
+                abiFilters("arm64-v8a")
             }
         }
     }

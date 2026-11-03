@@ -13,3 +13,12 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# FFmpeg source archives, extracted sources, and temporary build outputs
+native-codecs/src/main/cpp/third_party/ffmpeg-*/
+native-codecs/src/main/cpp/third_party/ffmpeg_build/
+native-codecs/src/main/cpp/third_party/ffmpeg_install/
+native-codecs/src/main/cpp/third_party/*.tar.*
+native-codecs/src/main/cpp/third_party/*.zip
+
+update_details.md
