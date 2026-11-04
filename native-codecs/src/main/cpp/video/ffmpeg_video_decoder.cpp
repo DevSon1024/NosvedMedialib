@@ -21,6 +21,35 @@ enum AVCodecID FfmpegVideoDecoder::getCodecIdForMimeType(const std::string& mime
     return AV_CODEC_ID_NONE;
 }
 
+static void convertAvcOrHevcToAnnexB(uint8_t* data, int size) {
+    if (!data || size < 4) return;
+
+    if (data[0] == 0 && data[1] == 0) {
+        if (data[2] == 1 || (size >= 4 && data[2] == 0 && data[3] == 1)) {
+            return;
+        }
+    }
+
+    int offset = 0;
+    while (offset + 4 <= size) {
+        uint32_t nalLen = (static_cast<uint32_t>(data[offset]) << 24) |
+                          (static_cast<uint32_t>(data[offset + 1]) << 16) |
+                          (static_cast<uint32_t>(data[offset + 2]) << 8) |
+                          static_cast<uint32_t>(data[offset + 3]);
+
+        if (nalLen == 0 || offset + 4 + nalLen > static_cast<uint32_t>(size)) {
+            break;
+        }
+
+        data[offset] = 0x00;
+        data[offset + 1] = 0x00;
+        data[offset + 2] = 0x00;
+        data[offset + 3] = 0x01;
+
+        offset += 4 + nalLen;
+    }
+}
+
 bool FfmpegVideoDecoder::open(const std::string& mimeType, const uint8_t* extraData, int extraDataSize, int width, int height) {
     std::lock_guard<std::mutex> lock(mutex_);
     releaseResources();
@@ -30,6 +59,8 @@ bool FfmpegVideoDecoder::open(const std::string& mimeType, const uint8_t* extraD
         LOGE("Unsupported video MIME type: %s", mimeType.c_str());
         return false;
     }
+
+    codecId_ = codecId;
 
     const AVCodec* codec = avcodec_find_decoder(codecId);
     if (!codec) {
@@ -98,6 +129,11 @@ int FfmpegVideoDecoder::decode(const uint8_t* packetData, int packetSize, int64_
             return allocRet;
         }
         std::memcpy(packet_->data, packetData, packetSize);
+
+        if (codecId_ == AV_CODEC_ID_H264 || codecId_ == AV_CODEC_ID_HEVC) {
+            convertAvcOrHevcToAnnexB(packet_->data, packetSize);
+        }
+
         packet_->pts = ptsUs;
         packet_->dts = ptsUs;
 
@@ -193,6 +229,7 @@ void FfmpegVideoDecoder::flush() {
     }
     hasLatestFrame_ = false;
     isEos_ = false;
+    codecId_ = AV_CODEC_ID_NONE;
 }
 
 void FfmpegVideoDecoder::releaseResources() {
@@ -214,6 +251,7 @@ void FfmpegVideoDecoder::releaseResources() {
     }
     hasLatestFrame_ = false;
     isEos_ = false;
+    codecId_ = AV_CODEC_ID_NONE;
 }
 
 void FfmpegVideoDecoder::close() {

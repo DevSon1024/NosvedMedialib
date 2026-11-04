@@ -28,8 +28,18 @@ class FFmpegVideoDecoder(
     init {
         val mimeType = format.sampleMimeType ?: throw FFmpegDecoderException("MIME type not specified in format")
         val extraData = format.initializationData.let { initData ->
-            if (initData.isNotEmpty() && initData[0].isNotEmpty()) {
-                initData[0]
+            if (initData.isNotEmpty()) {
+                var total = 0
+                for (chunk in initData) {
+                    total += chunk.size
+                }
+                val combined = ByteArray(total)
+                var off = 0
+                for (chunk in initData) {
+                    System.arraycopy(chunk, 0, combined, off, chunk.size)
+                    off += chunk.size
+                }
+                combined
             } else {
                 null
             }
@@ -116,11 +126,12 @@ class FFmpegVideoDecoder(
                     DecodingError(
                         decoderName = "FFmpegVideoDecoder",
                         errorCode = decodeResult,
-                        errorMessage = "FFmpeg decode failed: $errorDesc",
+                        errorMessage = "FFmpeg decode non-fatal packet skip: $errorDesc",
                         isFatal = false
                     )
                 )
-                return FFmpegDecoderException("FFmpeg decode failed: $errorDesc", errorCode = decodeResult)
+                outputBuffer.shouldBeSkipped = true
+                return null
             }
             decodeResult == 0 -> {
                 if (nativeLib.getVideoFrameInfo(nativeHandle, frameInfo)) {

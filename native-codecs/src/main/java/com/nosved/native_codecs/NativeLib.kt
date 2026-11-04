@@ -255,6 +255,103 @@ class NativeLib {
         }
     }
 
+    // --- Audio Decoder APIs ---
+
+    fun isAudioMimeTypeSupported(mimeType: String): Boolean {
+        if (!isLibraryLoaded) return false
+        return try {
+            nativeIsAudioMimeTypeSupported(mimeType)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to check audio mime support for $mimeType", e)
+            false
+        }
+    }
+
+    fun createAudioDecoder(mimeType: String, extraData: ByteArray?, sampleRate: Int, channelCount: Int): Long {
+        if (!isLibraryLoaded) return 0L
+        return try {
+            nativeCreateAudioDecoder(mimeType, extraData, sampleRate, channelCount)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to create audio decoder for $mimeType", e)
+            0L
+        }
+    }
+
+    fun decodeAudio(
+        handle: Long,
+        buffer: ByteBuffer?,
+        offset: Int,
+        length: Int,
+        outBuffer: ByteBuffer,
+        outCapacity: Int
+    ): Int {
+        if (!isLibraryLoaded || handle == 0L) return -1
+        return try {
+            nativeDecodeAudio(handle, buffer, offset, length, outBuffer, outCapacity)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to decode audio", e)
+            -1
+        }
+    }
+
+    fun getAudioSampleRate(handle: Long): Int {
+        if (!isLibraryLoaded || handle == 0L) return 0
+        return try {
+            nativeGetAudioSampleRate(handle)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to get audio sample rate", e)
+            0
+        }
+    }
+
+    fun getAudioChannelCount(handle: Long): Int {
+        if (!isLibraryLoaded || handle == 0L) return 0
+        return try {
+            nativeGetAudioChannelCount(handle)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to get audio channel count", e)
+            0
+        }
+    }
+
+    fun flushAudioDecoder(handle: Long) {
+        if (!isLibraryLoaded || handle == 0L) return
+        try {
+            nativeFlushAudioDecoder(handle)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to flush audio decoder", e)
+        }
+    }
+
+    fun releaseAudioDecoder(handle: Long) {
+        if (!isLibraryLoaded || handle == 0L) return
+        try {
+            nativeReleaseAudioDecoder(handle)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to release audio decoder", e)
+        }
+    }
+
+    private external fun nativeIsAudioMimeTypeSupported(mimeType: String): Boolean
+    private external fun nativeCreateAudioDecoder(
+        mimeType: String,
+        extraData: ByteArray?,
+        sampleRate: Int,
+        channelCount: Int
+    ): Long
+    private external fun nativeDecodeAudio(
+        handle: Long,
+        buffer: ByteBuffer?,
+        offset: Int,
+        length: Int,
+        outBuffer: ByteBuffer,
+        outCapacity: Int
+    ): Int
+    private external fun nativeGetAudioSampleRate(handle: Long): Int
+    private external fun nativeGetAudioChannelCount(handle: Long): Int
+    private external fun nativeFlushAudioDecoder(handle: Long)
+    private external fun nativeReleaseAudioDecoder(handle: Long)
+
     private external fun nativeCreateVideoDecoder(
         mimeType: String,
         extraData: ByteArray?,

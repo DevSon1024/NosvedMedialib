@@ -45,6 +45,7 @@ private:
     AVPacket* packet_ = nullptr;
     AVFrame* frame_ = nullptr;
     SwsContext* swsContext_ = nullptr;
+    enum AVCodecID codecId_ = AV_CODEC_ID_NONE;
 
     int cachedSwsWidth_ = 0;
     int cachedSwsHeight_ = 0;

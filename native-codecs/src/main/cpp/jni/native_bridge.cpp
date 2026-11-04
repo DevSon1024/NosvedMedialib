@@ -3,6 +3,7 @@
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 #include "../core/ffmpeg_init.h"
+#include "../audio/ffmpeg_audio_decoder.h"
 #include "../video/ffmpeg_video_decoder.h"
 #include "../video/dav1d_video_decoder.h"
 #include "../common/logging.h"
@@ -350,6 +351,136 @@ Java_com_nosved_native_1codecs_NativeLib_nativeReleaseDav1dDecoder(
         jlong handle) {
     if (handle == 0L) return;
     auto* decoder = reinterpret_cast<nosved::Dav1dVideoDecoder*>(handle);
+    delete decoder;
+}
+
+// Audio Decoder JNI methods
+
+JNIEXPORT jboolean JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeIsAudioMimeTypeSupported(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring jMimeType) {
+    if (!jMimeType) return JNI_FALSE;
+    const char* chars = env->GetStringUTFChars(jMimeType, nullptr);
+    if (!chars) return JNI_FALSE;
+    std::string mime(chars);
+    env->ReleaseStringUTFChars(jMimeType, chars);
+    return static_cast<jboolean>(nosved::FfmpegAudioDecoder::isMimeTypeSupported(mime));
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeCreateAudioDecoder(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring jMimeType,
+        jbyteArray jExtraData,
+        jint sampleRate,
+        jint channelCount) {
+    if (!jMimeType) return 0L;
+    const char* chars = env->GetStringUTFChars(jMimeType, nullptr);
+    if (!chars) return 0L;
+    std::string mime(chars);
+    env->ReleaseStringUTFChars(jMimeType, chars);
+
+    uint8_t* extraDataPtr = nullptr;
+    int extraDataSize = 0;
+    jbyte* byteElements = nullptr;
+
+    if (jExtraData) {
+        extraDataSize = env->GetArrayLength(jExtraData);
+        if (extraDataSize > 0) {
+            byteElements = env->GetByteArrayElements(jExtraData, nullptr);
+            extraDataPtr = reinterpret_cast<uint8_t*>(byteElements);
+        }
+    }
+
+    auto* decoder = new (std::nothrow) nosved::FfmpegAudioDecoder();
+    if (!decoder) {
+        if (byteElements) env->ReleaseByteArrayElements(jExtraData, byteElements, JNI_ABORT);
+        return 0L;
+    }
+
+    bool ok = decoder->open(mime, extraDataPtr, extraDataSize, sampleRate, channelCount);
+    if (byteElements) {
+        env->ReleaseByteArrayElements(jExtraData, byteElements, JNI_ABORT);
+    }
+
+    if (!ok) {
+        delete decoder;
+        return 0L;
+    }
+
+    return reinterpret_cast<jlong>(decoder);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeDecodeAudio(
+        JNIEnv* env,
+        jobject /* this */,
+        jlong handle,
+        jobject jInputBuffer,
+        jint offset,
+        jint length,
+        jobject jOutputBuffer,
+        jint outCapacity) {
+    if (handle == 0L || !jOutputBuffer || outCapacity <= 0) return -1;
+    auto* decoder = reinterpret_cast<nosved::FfmpegAudioDecoder*>(handle);
+
+    const uint8_t* inData = nullptr;
+    if (jInputBuffer && length > 0) {
+        auto* directAddress = static_cast<uint8_t*>(env->GetDirectBufferAddress(jInputBuffer));
+        if (directAddress) {
+            inData = directAddress + offset;
+        }
+    }
+
+    auto* outAddress = static_cast<uint8_t*>(env->GetDirectBufferAddress(jOutputBuffer));
+    if (!outAddress) {
+        LOGE("Direct buffer address for audio output buffer is null");
+        return -1;
+    }
+
+    return decoder->decode(inData, length, outAddress, outCapacity);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeGetAudioSampleRate(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle) {
+    if (handle == 0L) return 0;
+    auto* decoder = reinterpret_cast<nosved::FfmpegAudioDecoder*>(handle);
+    return decoder->getSampleRate();
+}
+
+JNIEXPORT jint JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeGetAudioChannelCount(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle) {
+    if (handle == 0L) return 0;
+    auto* decoder = reinterpret_cast<nosved::FfmpegAudioDecoder*>(handle);
+    return decoder->getChannelCount();
+}
+
+JNIEXPORT void JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeFlushAudioDecoder(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle) {
+    if (handle == 0L) return;
+    auto* decoder = reinterpret_cast<nosved::FfmpegAudioDecoder*>(handle);
+    decoder->flush();
+}
+
+JNIEXPORT void JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeReleaseAudioDecoder(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle) {
+    if (handle == 0L) return;
+    auto* decoder = reinterpret_cast<nosved::FfmpegAudioDecoder*>(handle);
     delete decoder;
 }
 

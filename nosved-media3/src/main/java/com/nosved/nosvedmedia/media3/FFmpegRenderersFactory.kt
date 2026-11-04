@@ -5,6 +5,8 @@ import android.os.Handler
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.audio.AudioRendererEventListener
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 
@@ -121,6 +123,73 @@ open class FFmpegRenderersFactory(
                     eventHandler,
                     eventListener,
                     allowedVideoJoiningTimeMs,
+                    out
+                )
+            }
+        }
+    }
+
+    override fun buildAudioRenderers(
+        context: Context,
+        extensionRendererMode: Int,
+        mediaCodecSelector: MediaCodecSelector,
+        enableDecoderFallback: Boolean,
+        audioSink: AudioSink,
+        eventHandler: Handler,
+        eventListener: AudioRendererEventListener,
+        out: ArrayList<Renderer>
+    ) {
+        val ffmpegAudioRenderer = FFmpegAudioRenderer(
+            eventHandler = eventHandler,
+            eventListener = eventListener,
+            audioSink = audioSink
+        )
+
+        val effectivePriority = if (priorityExplicit) {
+            softwareDecoderPriority
+        } else {
+            when (extensionRendererMode) {
+                EXTENSION_RENDERER_MODE_PREFER -> SoftwareDecoderPriority.PREFER
+                else -> SoftwareDecoderPriority.FALLBACK
+            }
+        }
+
+        when (effectivePriority) {
+            SoftwareDecoderPriority.PREFER -> {
+                out.add(ffmpegAudioRenderer)
+                super.buildAudioRenderers(
+                    context,
+                    extensionRendererMode,
+                    mediaCodecSelector,
+                    enableDecoderFallback,
+                    audioSink,
+                    eventHandler,
+                    eventListener,
+                    out
+                )
+            }
+            SoftwareDecoderPriority.FALLBACK -> {
+                super.buildAudioRenderers(
+                    context,
+                    extensionRendererMode,
+                    mediaCodecSelector,
+                    enableDecoderFallback,
+                    audioSink,
+                    eventHandler,
+                    eventListener,
+                    out
+                )
+                out.add(ffmpegAudioRenderer)
+            }
+            SoftwareDecoderPriority.DISABLED -> {
+                super.buildAudioRenderers(
+                    context,
+                    extensionRendererMode,
+                    mediaCodecSelector,
+                    enableDecoderFallback,
+                    audioSink,
+                    eventHandler,
+                    eventListener,
                     out
                 )
             }
