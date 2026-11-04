@@ -1,4 +1,4 @@
-package com.devson.native_codecs
+package com.nosved.native_codecs
 
 import org.junit.Test
 

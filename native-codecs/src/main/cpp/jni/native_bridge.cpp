@@ -29,7 +29,7 @@ void JNI_OnUnload(JavaVM* /*vm*/, void* /*reserved*/) {
 extern "C" {
 
 JNIEXPORT jstring JNICALL
-Java_com_devson_native_1codecs_NativeLib_stringFromJNI(
+Java_com_nosved_native_1codecs_NativeLib_stringFromJNI(
         JNIEnv* env,
         jobject /* this */) {
     std::string info = "NosvedMedia FFmpeg: " + nosved::FfmpegInit::getInstance().getVersion();
@@ -37,21 +37,21 @@ Java_com_devson_native_1codecs_NativeLib_stringFromJNI(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeInit(
+Java_com_nosved_native_1codecs_NativeLib_nativeInit(
         JNIEnv* /*env*/,
         jobject /* this */) {
     return static_cast<jboolean>(nosved::FfmpegInit::getInstance().initialize(g_vm));
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeIsInitialized(
+Java_com_nosved_native_1codecs_NativeLib_nativeIsInitialized(
         JNIEnv* /*env*/,
         jobject /* this */) {
     return static_cast<jboolean>(nosved::FfmpegInit::getInstance().isInitialized());
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeGetFFmpegVersion(
+Java_com_nosved_native_1codecs_NativeLib_nativeGetFFmpegVersion(
         JNIEnv* env,
         jobject /* this */) {
     std::string ver = nosved::FfmpegInit::getInstance().getVersion();
@@ -59,7 +59,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeGetFFmpegVersion(
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeGetFFmpegLicense(
+Java_com_nosved_native_1codecs_NativeLib_nativeGetFFmpegLicense(
         JNIEnv* env,
         jobject /* this */) {
     std::string lic = nosved::FfmpegInit::getInstance().getLicense();
@@ -67,7 +67,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeGetFFmpegLicense(
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeGetFFmpegConfiguration(
+Java_com_nosved_native_1codecs_NativeLib_nativeGetFFmpegConfiguration(
         JNIEnv* env,
         jobject /* this */) {
     std::string config = nosved::FfmpegInit::getInstance().getConfiguration();
@@ -75,7 +75,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeGetFFmpegConfiguration(
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeGetErrorDescription(
+Java_com_nosved_native_1codecs_NativeLib_nativeGetErrorDescription(
         JNIEnv* env,
         jobject /* this */,
         jint errorCode) {
@@ -84,21 +84,21 @@ Java_com_devson_native_1codecs_NativeLib_nativeGetErrorDescription(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeGetCodecVersion(
+Java_com_nosved_native_1codecs_NativeLib_nativeGetCodecVersion(
         JNIEnv* /*env*/,
         jobject /* this */) {
     return static_cast<jint>(nosved::FfmpegInit::getInstance().getCodecVersion());
 }
 
 JNIEXPORT jint JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeGetFormatVersion(
+Java_com_nosved_native_1codecs_NativeLib_nativeGetFormatVersion(
         JNIEnv* /*env*/,
         jobject /* this */) {
     return static_cast<jint>(nosved::FfmpegInit::getInstance().getFormatVersion());
 }
 
 JNIEXPORT jint JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeGetUtilVersion(
+Java_com_nosved_native_1codecs_NativeLib_nativeGetUtilVersion(
         JNIEnv* /*env*/,
         jobject /* this */) {
     return static_cast<jint>(nosved::FfmpegInit::getInstance().getUtilVersion());
@@ -107,7 +107,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeGetUtilVersion(
 // Video Decoder JNI methods
 
 JNIEXPORT jlong JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeCreateVideoDecoder(
+Java_com_nosved_native_1codecs_NativeLib_nativeCreateVideoDecoder(
         JNIEnv* env,
         jobject /* this */,
         jstring jMimeType,
@@ -154,7 +154,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeCreateVideoDecoder(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeDecodeVideo(
+Java_com_nosved_native_1codecs_NativeLib_nativeDecodeVideo(
         JNIEnv* env,
         jobject /* this */,
         jlong handle,
@@ -178,7 +178,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeDecodeVideo(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeGetVideoFrameInfo(
+Java_com_nosved_native_1codecs_NativeLib_nativeGetVideoFrameInfo(
         JNIEnv* env,
         jobject /* this */,
         jlong handle,
@@ -202,7 +202,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeGetVideoFrameInfo(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeRenderVideoFrameToSurface(
+Java_com_nosved_native_1codecs_NativeLib_nativeRenderVideoFrameToSurface(
         JNIEnv* env,
         jobject /* this */,
         jlong handle,
@@ -222,7 +222,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeRenderVideoFrameToSurface(
 }
 
 JNIEXPORT void JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeFlushVideoDecoder(
+Java_com_nosved_native_1codecs_NativeLib_nativeFlushVideoDecoder(
         JNIEnv* /*env*/,
         jobject /* this */,
         jlong handle) {
@@ -232,7 +232,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeFlushVideoDecoder(
 }
 
 JNIEXPORT void JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeReleaseVideoDecoder(
+Java_com_nosved_native_1codecs_NativeLib_nativeReleaseVideoDecoder(
         JNIEnv* /*env*/,
         jobject /* this */,
         jlong handle) {
@@ -242,7 +242,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeReleaseVideoDecoder(
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeGetDav1dVersion(
+Java_com_nosved_native_1codecs_NativeLib_nativeGetDav1dVersion(
         JNIEnv* env,
         jobject /* this */) {
     const char* ver = nosved::Dav1dVideoDecoder::getVersion();
@@ -250,7 +250,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeGetDav1dVersion(
 }
 
 JNIEXPORT jlong JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeCreateDav1dDecoder(
+Java_com_nosved_native_1codecs_NativeLib_nativeCreateDav1dDecoder(
         JNIEnv* /*env*/,
         jobject /* this */,
         jint width,
@@ -265,7 +265,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeCreateDav1dDecoder(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeDecodeDav1d(
+Java_com_nosved_native_1codecs_NativeLib_nativeDecodeDav1d(
         JNIEnv* env,
         jobject /* this */,
         jlong handle,
@@ -289,7 +289,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeDecodeDav1d(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeGetDav1dFrameInfo(
+Java_com_nosved_native_1codecs_NativeLib_nativeGetDav1dFrameInfo(
         JNIEnv* env,
         jobject /* this */,
         jlong handle,
@@ -314,7 +314,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeGetDav1dFrameInfo(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeRenderDav1dFrameToSurface(
+Java_com_nosved_native_1codecs_NativeLib_nativeRenderDav1dFrameToSurface(
         JNIEnv* env,
         jobject /* this */,
         jlong handle,
@@ -334,7 +334,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeRenderDav1dFrameToSurface(
 }
 
 JNIEXPORT void JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeFlushDav1dDecoder(
+Java_com_nosved_native_1codecs_NativeLib_nativeFlushDav1dDecoder(
         JNIEnv* /*env*/,
         jobject /* this */,
         jlong handle) {
@@ -344,7 +344,7 @@ Java_com_devson_native_1codecs_NativeLib_nativeFlushDav1dDecoder(
 }
 
 JNIEXPORT void JNICALL
-Java_com_devson_native_1codecs_NativeLib_nativeReleaseDav1dDecoder(
+Java_com_nosved_native_1codecs_NativeLib_nativeReleaseDav1dDecoder(
         JNIEnv* /*env*/,
         jobject /* this */,
         jlong handle) {

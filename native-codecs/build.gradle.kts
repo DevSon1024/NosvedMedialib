@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.devson.native_codecs"
+    namespace = "com.nosved.native_codecs"
     compileSdk = 35
 
     defaultConfig {
@@ -12,12 +12,12 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
-            abiFilters.add("arm64-v8a")
+            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86_64"))
         }
         externalNativeBuild {
             cmake {
                 cppFlags("-std=c++17")
-                abiFilters("arm64-v8a")
+                abiFilters("arm64-v8a", "armeabi-v7a", "x86_64")
             }
         }
     }
@@ -43,7 +43,7 @@ android {
 publishing {
     publications {
         register<MavenPublication>("release") {
-            groupId = "com.devson.nosvedmedia"
+            groupId = "com.nosved.nosvedmedia"
             artifactId = "native-codecs"
             version = "1.0.0"
 

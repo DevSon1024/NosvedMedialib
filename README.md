@@ -35,15 +35,15 @@ Add `mavenLocal()` to your repository configuration, then add the dependency:
 
 ```kotlin
 dependencies {
-    implementation("com.devson.nosvedmedia:nosved-media3:1.0.0")
+    implementation("com.nosved.nosvedmedia:nosved-media3:1.0.0")
 }
 ```
 
 ### 2. Basic ExoPlayer Integration
 
 ```kotlin
-import com.devson.nosvedmedia.NosvedMedia
-import com.devson.nosvedmedia.media3.SoftwareDecoderPriority
+import com.nosved.nosvedmedia.NosvedMedia
+import com.nosved.nosvedmedia.media3.SoftwareDecoderPriority
 
 // Initialize library
 NosvedMedia.initialize(context)
@@ -65,4 +65,3 @@ val player = NosvedMedia.createPlayer(
 ## License
 
 NosvedMedia is licensed under the Apache License 2.0. Third-party components are licensed under LGPL v2.1+ (FFmpeg) and BSD 2-Clause (dav1d).
-

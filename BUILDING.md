@@ -26,6 +26,7 @@ cd native-codecs/src/main/cpp/third_party
 ```
 
 Key configuration flags:
+
 - Target ABI: `arm64-v8a` (`aarch64-linux-android26`)
 - Shared libraries: `--enable-shared --disable-static`
 - Licensing compliance: strictly LGPL (no `--enable-gpl`, no `--enable-nonfree`)
@@ -53,6 +54,7 @@ ninja -C build-android install
 ```
 
 Output binary:
+
 - `libdav1d.so` copied to `native-codecs/src/main/jniLibs/arm64-v8a/`.
 
 ## Building the Android AARs
@@ -66,6 +68,7 @@ Run the Gradle release bundling tasks:
 ```
 
 Generated AAR artifacts:
+
 - `native-codecs/build/outputs/aar/native-codecs-release.aar`
 - `nosved-media3/build/outputs/aar/nosved-media3-release.aar`
 
@@ -78,9 +81,10 @@ To publish artifacts for consumption by local apps (such as Nosved Player Lite):
 ```
 
 This installs:
-- `com.devson.nosvedmedia:native-codecs:1.0.0`
-- `com.devson.nosvedmedia:nosved-media3:1.0.0`
-into `$HOME/.m2/repository/com/devson/nosvedmedia/`.
+
+- `com.nosved.nosvedmedia:native-codecs:1.0.0`
+- `com.nosved.nosvedmedia:nosved-media3:1.0.0`
+  into `$HOME/.m2/repository/com/nosved/nosvedmedia/`.
 
 ## Building the Sample Application
 
@@ -91,5 +95,5 @@ To assemble the sample debug APK:
 ```
 
 Output:
-- `app/build/outputs/apk/debug/app-debug.apk`
 
+- `app/build/outputs/apk/debug/app-debug.apk`

@@ -19,7 +19,7 @@ This document serves as the absolute source of truth for any AI agent or LLM ass
 - **Independence:** The project is maintained completely independently from Nosved Player Lite.
 - **Flawless Execution:** The library and demo app MUST operate smoothly without memory leaks, native crashes, frame drops, or pipeline stalls.
 - **Zero Crash Tolerance:** Prioritize robustness and safe error propagation across native and JVM layers. Never let unhandled C++ exceptions or unverified JNI return states crash the host application.
-- **No Hallucinations:** Only use verified APIs, classes, dependencies, and resources. Never assume a file, class, dependency, or module exists—always verify first. To confirm adherence and avoid hallucinations, start every chat with the words **"Hey Devson"**.
+- **No Hallucinations:** Only use verified APIs, classes, dependencies, and resources. Never assume a file, class, dependency, or module exists—always verify first. To confirm adherence and avoid hallucinations, start every chat with the words **"Hey Devson1024"**.
 - **Concise Communication:** Be short and precise. Do not explain things in long phrases or paragraphs if not required.
 
 ---
@@ -64,17 +64,21 @@ This document serves as the absolute source of truth for any AI agent or LLM ass
 You must actively maintain the project changelog. After every completed task, error resolution, or feature addition, append an entry to `update_details.md`.
 
 ### Format and Rules for `update_details.md`:
+
 - Do NOT rewrite or overwrite the entire file; always append new entries at the very end.
 - Include a Date and Time stamp for each update.
 - Document every change using this exact schema:
 
 ```markdown
 ### [YYYY-MM-DD HH:MM:SS]
+
 - **Issue:** (Briefly describe the exact issue, task, or feature)
 - **Type:** (Error | Bug | Native | Media3 | Architecture | Performance | Feature)
 - **Solution:** (Explain how the issue was solved. Maximum 10 lines.)
+
 ---
 ```
+
 - Append exactly `---` on a new line to close out that specific session.
 - Do not include conversational filler in `update_details.md`.
 
@@ -83,6 +87,7 @@ You must actively maintain the project changelog. After every completed task, er
 ## 5. Agent Workflow & Phase Execution
 
 For each task:
+
 1. **Inspect** relevant project files.
 2. **Explain** the current architecture.
 3. **Identify** files that need modification or creation.
@@ -93,7 +98,9 @@ For each task:
 8. **Report** completed work, verification results, and remaining limitations.
 
 ### Required Final Report Format
+
 At the end of each phase, provide:
+
 - **Files created**
 - **Files modified**
 - **Dependencies added**
@@ -105,7 +112,7 @@ At the end of each phase, provide:
 - **Remaining work**
 - **Exact instructions for starting the next phase**
 
-*Never fabricate build or test results.*
+_Never fabricate build or test results._
 
 ---
 
@@ -113,4 +120,3 @@ At the end of each phase, provide:
 
 - **No Unauthorized Commits/Pushes:** Do not commit or push any changes to the Git repository until explicitly instructed to do so by the developer.
 - **Protect `.gitignore`:** Never modify any `.gitignore` file automatically. All `.gitignore` updates are managed manually by the developer.
-

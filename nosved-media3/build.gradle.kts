@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.devson.nosvedmedia.media3"
+    namespace = "com.nosved.nosvedmedia.media3"
     compileSdk = 35
 
     defaultConfig {
@@ -28,7 +28,7 @@ android {
 publishing {
     publications {
         register<MavenPublication>("release") {
-            groupId = "com.devson.nosvedmedia"
+            groupId = "com.nosved.nosvedmedia"
             artifactId = "nosved-media3"
             version = "1.0.0"
 

@@ -22,11 +22,11 @@ In your application module's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.devson.nosvedmedia:nosved-media3:1.0.0")
+    implementation("com.nosved.nosvedmedia:nosved-media3:1.0.0")
 }
 ```
 
-Gradle automatically resolves the transitive dependency `com.devson.nosvedmedia:native-codecs:1.0.0` containing all arm64-v8a native `.so` binaries.
+Gradle automatically resolves the transitive dependency `com.nosved.nosvedmedia:native-codecs:1.0.0` containing all arm64-v8a native `.so` binaries.
 
 ### Native Packaging Configuration
 
@@ -56,7 +56,7 @@ android {
 Initialize the library once during application startup or before creating players:
 
 ```kotlin
-import com.devson.nosvedmedia.NosvedMedia
+import com.nosved.nosvedmedia.NosvedMedia
 
 class MyApp : Application() {
     override fun onCreate() {
@@ -71,8 +71,8 @@ class MyApp : Application() {
 ### Simple Integration
 
 ```kotlin
-import com.devson.nosvedmedia.NosvedMedia
-import com.devson.nosvedmedia.media3.SoftwareDecoderPriority
+import com.nosved.nosvedmedia.NosvedMedia
+import com.nosved.nosvedmedia.media3.SoftwareDecoderPriority
 
 val player = NosvedMedia.createPlayer(
     context = context,
@@ -89,8 +89,8 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.Renderer
-import com.devson.nosvedmedia.media3.FFmpegRenderersFactory
-import com.devson.nosvedmedia.media3.SoftwareDecoderPriority
+import com.nosved.nosvedmedia.media3.FFmpegRenderersFactory
+import com.nosved.nosvedmedia.media3.SoftwareDecoderPriority
 
 class CustomRenderersFactory(context: Context) : FFmpegRenderersFactory(context) {
 
@@ -165,4 +165,3 @@ val renderersFactory = NosvedMedia.createRenderersFactory(
     }
 )
 ```
-

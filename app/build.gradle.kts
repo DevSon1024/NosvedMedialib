@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace = "com.devson.nosvedmedia"
+    namespace = "com.nosved.nosvedmedia"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.devson.nosvedmedia"
+        applicationId = "com.nosved.nosvedmedia"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
