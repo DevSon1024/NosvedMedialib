@@ -23,66 +23,6 @@ enum AVCodecID FfmpegVideoDecoder::getCodecIdForMimeType(const std::string& mime
     return AV_CODEC_ID_NONE;
 }
 
-static void convertAvcOrHevcToAnnexB(uint8_t* data, int size) {
-    if (!data || size < 4) return;
-
-    // Check if already 4-byte Annex B
-    if (data[0] == 0 && data[1] == 0 && data[2] == 0 && data[3] == 1) {
-        return;
-    }
-
-    // Check if length-prefixed (AVCC/HVCC format)
-    int offset = 0;
-    bool isLengthPrefixed = false;
-    while (offset + 4 <= size) {
-        uint32_t nalLen = (static_cast<uint32_t>(data[offset]) << 24) |
-                          (static_cast<uint32_t>(data[offset + 1]) << 16) |
-                          (static_cast<uint32_t>(data[offset + 2]) << 8) |
-                          static_cast<uint32_t>(data[offset + 3]);
-
-        if (nalLen == 0 || offset + 4 + nalLen > static_cast<uint32_t>(size)) {
-            break;
-        }
-
-        offset += 4 + nalLen;
-        if (offset == size || (offset <= size && offset >= size - 4)) {
-            isLengthPrefixed = true;
-            break;
-        }
-    }
-
-    if (!isLengthPrefixed) {
-        uint32_t firstLen = (static_cast<uint32_t>(data[0]) << 24) |
-                            (static_cast<uint32_t>(data[1]) << 16) |
-                            (static_cast<uint32_t>(data[2]) << 8) |
-                            static_cast<uint32_t>(data[3]);
-        if (firstLen > 4 && firstLen <= static_cast<uint32_t>(size - 4)) {
-            isLengthPrefixed = true;
-        }
-    }
-
-    if (isLengthPrefixed) {
-        offset = 0;
-        while (offset + 4 <= size) {
-            uint32_t nalLen = (static_cast<uint32_t>(data[offset]) << 24) |
-                              (static_cast<uint32_t>(data[offset + 1]) << 16) |
-                              (static_cast<uint32_t>(data[offset + 2]) << 8) |
-                              static_cast<uint32_t>(data[offset + 3]);
-
-            if (nalLen == 0 || offset + 4 + nalLen > static_cast<uint32_t>(size)) {
-                break;
-            }
-
-            data[offset] = 0x00;
-            data[offset + 1] = 0x00;
-            data[offset + 2] = 0x00;
-            data[offset + 3] = 0x01;
-
-            offset += 4 + nalLen;
-        }
-    }
-}
-
 bool FfmpegVideoDecoder::open(const std::string& mimeType, const uint8_t* extraData, int extraDataSize, int width, int height) {
     releaseResources();
 
@@ -126,6 +66,7 @@ bool FfmpegVideoDecoder::open(const std::string& mimeType, const uint8_t* extraD
     codecContext_->delay = 0;
     codecContext_->flags |= AV_CODEC_FLAG_LOW_DELAY;
     codecContext_->flags2 |= AV_CODEC_FLAG2_FAST;
+    codecContext_->err_recognition = AV_EF_IGNORE_ERR;
 
     int ret = avcodec_open2(codecContext_, codec, nullptr);
     if (ret < 0) {
@@ -159,7 +100,7 @@ int FfmpegVideoDecoder::decode(int bufferIndex, const uint8_t* packetData, int p
 
     if (isEos) {
         int ret = avcodec_send_packet(codecContext_, nullptr);
-        if (ret < 0 && ret != AVERROR_EOF) {
+        if (ret < 0 && ret != AVERROR_EOF && ret != AVERROR(EAGAIN)) {
             return ret;
         }
     } else if (packetData && packetSize > 0) {
@@ -171,46 +112,75 @@ int FfmpegVideoDecoder::decode(int bufferIndex, const uint8_t* packetData, int p
         }
         std::memcpy(packet_->data, packetData, packetSize);
 
-        if (codecId_ == AV_CODEC_ID_H264 || codecId_ == AV_CODEC_ID_HEVC) {
-            convertAvcOrHevcToAnnexB(packet_->data, packetSize);
-        }
-
         packet_->pts = ptsUs;
-        packet_->dts = ptsUs;
+        packet_->dts = AV_NOPTS_VALUE;
 
-        int ret = avcodec_send_packet(codecContext_, packet_);
-        if (ret < 0 && ret != AVERROR(EAGAIN)) {
+        int ret;
+        while ((ret = avcodec_send_packet(codecContext_, packet_)) == AVERROR(EAGAIN)) {
+            AVFrame* drainedFrame = av_frame_alloc();
+            if (!drainedFrame) {
+                LOGE("av_frame_alloc failed during EAGAIN drain");
+                return AVERROR(ENOMEM);
+            }
+            int dret = avcodec_receive_frame(codecContext_, drainedFrame);
+            if (dret < 0) {
+                av_frame_free(&drainedFrame);
+                if (dret == AVERROR(EAGAIN)) {
+                    continue;
+                }
+                LOGE("avcodec_receive_frame failed during EAGAIN: %d", dret);
+                return dret;
+            }
+            pendingFrames_.push_back(drainedFrame);
+        }
+        if (ret < 0 && ret != AVERROR_EOF) {
+            LOGW("avcodec_send_packet error: %d", ret);
             return ret;
         }
     }
 
-    int rec = avcodec_receive_frame(codecContext_, tempFrame_);
-    if (rec == 0) {
-        std::lock_guard<std::mutex> renderLock(renderMutex_);
-        if (!outputFrames_[idx]) {
-            outputFrames_[idx] = av_frame_alloc();
+    AVFrame* readyFrame = nullptr;
+    bool freeReadyFrame = false;
+
+    if (!pendingFrames_.empty()) {
+        readyFrame = pendingFrames_.front();
+        pendingFrames_.pop_front();
+        freeReadyFrame = true;
+    } else {
+        int rec = avcodec_receive_frame(codecContext_, tempFrame_);
+        if (rec == 0) {
+            readyFrame = tempFrame_;
+            freeReadyFrame = false;
+        } else if (rec == AVERROR(EAGAIN)) {
+            return 1; // Needs more packets
+        } else if (rec == AVERROR_EOF) {
+            isEos_ = true;
+            return 2; // End of stream
         } else {
-            av_frame_unref(outputFrames_[idx]);
+            return rec; // Decode error
         }
-
-        av_frame_move_ref(outputFrames_[idx], tempFrame_);
-
-        frameInfos_[idx].width = outputFrames_[idx]->width;
-        frameInfos_[idx].height = outputFrames_[idx]->height;
-        frameInfos_[idx].pts = (outputFrames_[idx]->pts != AV_NOPTS_VALUE) ? outputFrames_[idx]->pts : ptsUs;
-        frameInfos_[idx].format = outputFrames_[idx]->format;
-        frameInfos_[idx].isKeyFrame = (outputFrames_[idx]->flags & AV_FRAME_FLAG_KEY) != 0;
-        frameValid_[idx] = true;
-
-        return 0; // Frame ready
-    } else if (rec == AVERROR(EAGAIN)) {
-        return 1; // Needs more packets
-    } else if (rec == AVERROR_EOF) {
-        isEos_ = true;
-        return 2; // End of stream
     }
 
-    return rec; // Decode error
+    std::lock_guard<std::mutex> renderLock(renderMutex_);
+    if (!outputFrames_[idx]) {
+        outputFrames_[idx] = av_frame_alloc();
+    } else {
+        av_frame_unref(outputFrames_[idx]);
+    }
+
+    av_frame_move_ref(outputFrames_[idx], readyFrame);
+    if (freeReadyFrame) {
+        av_frame_free(&readyFrame);
+    }
+
+    frameInfos_[idx].width = outputFrames_[idx]->width;
+    frameInfos_[idx].height = outputFrames_[idx]->height;
+    frameInfos_[idx].pts = (outputFrames_[idx]->pts != AV_NOPTS_VALUE) ? outputFrames_[idx]->pts : ptsUs;
+    frameInfos_[idx].format = outputFrames_[idx]->format;
+    frameInfos_[idx].isKeyFrame = (outputFrames_[idx]->flags & AV_FRAME_FLAG_KEY) != 0;
+    frameValid_[idx] = true;
+
+    return 0; // Frame ready
 }
 
 bool FfmpegVideoDecoder::getFrameInfo(int bufferIndex, VideoFrameInfo* outInfo) {
@@ -290,9 +260,19 @@ void FfmpegVideoDecoder::releaseFrame(int bufferIndex) {
     frameValid_[idx] = false;
 }
 
+void FfmpegVideoDecoder::clearPendingFrames() {
+    for (AVFrame* frame : pendingFrames_) {
+        if (frame) {
+            av_frame_free(&frame);
+        }
+    }
+    pendingFrames_.clear();
+}
+
 void FfmpegVideoDecoder::flush() {
     {
         std::lock_guard<std::mutex> codecLock(codecMutex_);
+        clearPendingFrames();
         if (codecContext_) {
             avcodec_flush_buffers(codecContext_);
         }
@@ -315,6 +295,7 @@ void FfmpegVideoDecoder::flush() {
 void FfmpegVideoDecoder::releaseResources() {
     {
         std::lock_guard<std::mutex> codecLock(codecMutex_);
+        clearPendingFrames();
         if (tempFrame_) {
             av_frame_free(&tempFrame_);
             tempFrame_ = nullptr;

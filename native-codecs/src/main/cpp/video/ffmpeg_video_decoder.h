@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <deque>
 #include <mutex>
 #include <thread>
 #include <algorithm>
@@ -39,12 +40,14 @@ public:
 
 private:
     void releaseResources();
+    void clearPendingFrames();
     static enum AVCodecID getCodecIdForMimeType(const std::string& mimeType);
 
     std::mutex codecMutex_;
     AVCodecContext* codecContext_ = nullptr;
     AVPacket* packet_ = nullptr;
     AVFrame* tempFrame_ = nullptr;
+    std::deque<AVFrame*> pendingFrames_;
     enum AVCodecID codecId_ = AV_CODEC_ID_NONE;
     bool isEos_ = false;
 

@@ -3,6 +3,7 @@ package com.nosved.nosvedmedia.media3
 import android.view.Surface
 import androidx.media3.common.C
 import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.decoder.DecoderInputBuffer
 import androidx.media3.decoder.SimpleDecoder
@@ -37,23 +38,7 @@ class FFmpegVideoDecoder(
 
     init {
         val mimeType = format.sampleMimeType ?: throw FFmpegDecoderException("MIME type not specified in format")
-        val extraData = format.initializationData.let { initData ->
-            if (initData.isNotEmpty()) {
-                var total = 0
-                for (chunk in initData) {
-                    total += chunk.size
-                }
-                val combined = ByteArray(total)
-                var off = 0
-                for (chunk in initData) {
-                    System.arraycopy(chunk, 0, combined, off, chunk.size)
-                    off += chunk.size
-                }
-                combined
-            } else {
-                null
-            }
-        }
+        val extraData = getExtraData(mimeType, format.initializationData)
         val width = if (format.width != Format.NO_VALUE) format.width else 0
         val height = if (format.height != Format.NO_VALUE) format.height else 0
 
@@ -189,6 +174,31 @@ class FFmpegVideoDecoder(
         if (handle != 0L) {
             nativeHandle = 0L
             nativeLib.releaseVideoDecoder(handle)
+        }
+    }
+
+    companion object {
+        @JvmStatic
+        fun getExtraData(mimeType: String, initializationData: List<ByteArray>): ByteArray? {
+            if (initializationData.isEmpty()) return null
+            return when (mimeType) {
+                MimeTypes.VIDEO_H264 -> {
+                    if (initializationData.size >= 2) {
+                        val sps = initializationData[0]
+                        val pps = initializationData[1]
+                        val extraData = ByteArray(sps.size + pps.size)
+                        System.arraycopy(sps, 0, extraData, 0, sps.size)
+                        System.arraycopy(pps, 0, extraData, sps.size, pps.size)
+                        extraData
+                    } else {
+                        initializationData[0]
+                    }
+                }
+                MimeTypes.VIDEO_H265 -> {
+                    initializationData[0]
+                }
+                else -> null
+            }
         }
     }
 }
