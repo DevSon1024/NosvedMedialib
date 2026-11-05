@@ -84,8 +84,18 @@ bool Dav1dVideoDecoder::open(int width, int height, int nThreads, VideoScalingMo
     Dav1dSettings settings;
     dav1d_default_settings(&settings);
     int cpuCores = static_cast<int>(std::thread::hardware_concurrency());
-    settings.n_threads = nThreads > 0 ? nThreads : ((cpuCores > 0) ? std::min(8, std::max(2, cpuCores)) : 4);
-    settings.max_frame_delay = 1;
+    if (nThreads > 0) {
+        settings.n_threads = nThreads;
+    } else {
+        if (width >= 3840 || height >= 2160) {
+            settings.n_threads = (cpuCores > 0) ? std::min(6, std::max(4, cpuCores - 2)) : 4;
+        } else if (width >= 1920 || height >= 1080) {
+            settings.n_threads = (cpuCores > 0) ? std::min(4, std::max(2, cpuCores / 2)) : 3;
+        } else {
+            settings.n_threads = (cpuCores > 0) ? std::min(2, std::max(1, cpuCores / 4)) : 2;
+        }
+    }
+    settings.max_frame_delay = (settings.n_threads > 2) ? 2 : 1;
 
     int ret = dav1d_open(&context_, &settings);
     if (ret < 0 || !context_) {
@@ -298,20 +308,24 @@ bool Dav1dVideoDecoder::renderToSurface(int bufferIndex, ANativeWindow* window) 
     int srcRange = pic.seq_hdr ? (pic.seq_hdr->color_range ? 1 : 0) : 0;
     int dstRange = 1;
 
-    const int* invTable = sws_getCoefficients(swsSrcCS);
-    const int* table = sws_getCoefficients(SWS_CS_DEFAULT);
+    if (cachedColorSpace_ != swsSrcCS || cachedColorRange_ != srcRange) {
+        const int* invTable = sws_getCoefficients(swsSrcCS);
+        const int* table = sws_getCoefficients(SWS_CS_DEFAULT);
 
-    if (invTable && table) {
-        sws_setColorspaceDetails(
-            swsContext_,
-            invTable,
-            srcRange,
-            table,
-            dstRange,
-            0,
-            1 << 16,
-            1 << 16
-        );
+        if (invTable && table) {
+            sws_setColorspaceDetails(
+                swsContext_,
+                invTable,
+                srcRange,
+                table,
+                dstRange,
+                0,
+                1 << 16,
+                1 << 16
+            );
+            cachedColorSpace_ = swsSrcCS;
+            cachedColorRange_ = srcRange;
+        }
     }
 
     const uint8_t* srcPlanes[3] = {
@@ -363,6 +377,8 @@ void Dav1dVideoDecoder::flush() {
                 pictureValid_[i] = false;
             }
         }
+        cachedColorSpace_ = -1;
+        cachedColorRange_ = -1;
     }
 }
 

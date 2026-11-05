@@ -163,6 +163,7 @@ Java_com_nosved_native_1codecs_NativeLib_nativeCreateVideoDecoderConfigured(
         jint width,
         jint height,
         jint threadCount,
+        jint threadType,
         jint scalingMode,
         jboolean enableToneMapping) {
     if (!jMimeType) return 0L;
@@ -191,7 +192,7 @@ Java_com_nosved_native_1codecs_NativeLib_nativeCreateVideoDecoderConfigured(
     }
 
     nosved::VideoScalingMode mode = static_cast<nosved::VideoScalingMode>(scalingMode);
-    bool ok = decoder->open(mimeType, extraDataPtr, extraDataSize, width, height, threadCount, mode, enableToneMapping == JNI_TRUE);
+    bool ok = decoder->open(mimeType, extraDataPtr, extraDataSize, width, height, threadCount, threadType, mode, enableToneMapping == JNI_TRUE);
 
     if (byteElements) {
         env->ReleaseByteArrayElements(jExtraData, byteElements, JNI_ABORT);

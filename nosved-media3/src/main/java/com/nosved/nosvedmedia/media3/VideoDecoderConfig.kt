@@ -17,6 +17,9 @@ data class VideoDecoderConfig(
     val maxOutputWidth: Int = 3840,
     val maxOutputHeight: Int = 2160,
     val threadCount: Int = 0,
+    val threadPolicy: ThreadPolicy = ThreadPolicy.AUTO,
+    val threadType: Int = 0, // 0 = AUTO, 1 = FRAME, 2 = SLICE, 3 = FRAME|SLICE
     val scalingMode: VideoScalingMode = VideoScalingMode.BILINEAR,
-    val enableHdrToneMapping: Boolean = true
+    val enableHdrToneMapping: Boolean = true,
+    val thermalMitigationPolicy: ThermalMitigationPolicy = ThermalMitigationPolicy.BALANCED
 )

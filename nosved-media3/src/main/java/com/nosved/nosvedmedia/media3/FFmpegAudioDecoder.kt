@@ -32,7 +32,8 @@ data class AudioDecoderConfig(
 class FFmpegAudioDecoder(
     val format: Format,
     val config: AudioDecoderConfig = AudioDecoderConfig(),
-    val diagnosticsListener: PlaybackDiagnosticsListener? = null
+    val diagnosticsListener: PlaybackDiagnosticsListener? = null,
+    val performanceMonitor: PerformanceMonitor? = null
 ) : Decoder<DecoderInputBuffer, SimpleDecoderOutputBuffer, FFmpegDecoderException> {
 
     constructor(
@@ -358,6 +359,7 @@ class FFmpegAudioDecoder(
                 }
             } else {
                 // Normal packet decode
+                val startTimeNs = System.nanoTime()
                 val inputData: ByteBuffer? = buffer.data
                 val length = inputData?.remaining() ?: 0
                 val offset = inputData?.position() ?: 0
@@ -436,6 +438,9 @@ class FFmpegAudioDecoder(
                         reading = false
                     }
                 }
+
+                val durationMs = (System.nanoTime() - startTimeNs) / 1_000_000.0
+                performanceMonitor?.recordAudioLatency(durationMs)
 
                 synchronized(lock) {
                     buffer.clear()

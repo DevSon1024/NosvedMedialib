@@ -20,6 +20,10 @@ class PerformanceMonitor(
     private var windowIndex = 0
     private var windowCount = 0
 
+    private var audioLatencyMs = 0.0
+    private var currentThermalStatus = ThermalStatus.NONE
+    private var activeThreadCount = 0
+
     fun recordDecodeTime(durationNs: Long) {
         val currentMetrics: DecodingPerformanceMetrics
         synchronized(lock) {
@@ -65,7 +69,10 @@ class PerformanceMonitor(
                 maxDecodeTimeMs = maxMs,
                 minDecodeTimeMs = minMs,
                 currentFps = fps,
-                memoryUsageMb = memMb
+                memoryUsageMb = memMb,
+                audioProcessingLatencyMs = audioLatencyMs,
+                thermalStatus = currentThermalStatus,
+                activeThreadCount = activeThreadCount
             )
         }
 
@@ -75,6 +82,24 @@ class PerformanceMonitor(
     fun recordDroppedFrame() {
         synchronized(lock) {
             totalFramesDropped++
+        }
+    }
+
+    fun recordAudioLatency(latencyMs: Double) {
+        synchronized(lock) {
+            audioLatencyMs = latencyMs
+        }
+    }
+
+    fun updateThermalStatus(status: ThermalStatus) {
+        synchronized(lock) {
+            currentThermalStatus = status
+        }
+    }
+
+    fun setActiveThreadCount(count: Int) {
+        synchronized(lock) {
+            activeThreadCount = count
         }
     }
 
@@ -97,7 +122,10 @@ class PerformanceMonitor(
                 maxDecodeTimeMs = maxMs,
                 minDecodeTimeMs = minMs,
                 currentFps = 0.0,
-                memoryUsageMb = memMb
+                memoryUsageMb = memMb,
+                audioProcessingLatencyMs = audioLatencyMs,
+                thermalStatus = currentThermalStatus,
+                activeThreadCount = activeThreadCount
             )
         }
     }
@@ -111,7 +139,7 @@ class PerformanceMonitor(
             maxDecodeTimeNs = 0L
             windowIndex = 0
             windowCount = 0
+            audioLatencyMs = 0.0
         }
     }
 }
-

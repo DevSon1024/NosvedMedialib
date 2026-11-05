@@ -57,6 +57,8 @@ private:
     int cachedWidth_ = 0;
     int cachedHeight_ = 0;
     int cachedFormat_ = -1;
+    int cachedColorSpace_ = -1;
+    int cachedColorRange_ = -1;
     VideoScalingMode scalingMode_ = VideoScalingMode::BILINEAR;
     bool enableToneMapping_ = true;
     static void applyToneMapping(ANativeWindow_Buffer& windowBuffer, int colorTransfer);

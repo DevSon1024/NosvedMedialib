@@ -43,6 +43,7 @@ class FFmpegAudioRenderer(
 
     private var currentFormat: Format? = null
     private var hasRenderedFirstSample = false
+    private val performanceMonitor = PerformanceMonitor(diagnosticsListener)
 
     override fun getName(): String = "FFmpegAudioRenderer"
 
@@ -170,7 +171,7 @@ class FFmpegAudioRenderer(
             maxOutputChannels = maxChannels
         )
 
-        val decoder = FFmpegAudioDecoder(format, config, diagnosticsListener)
+        val decoder = FFmpegAudioDecoder(format, config, diagnosticsListener, performanceMonitor)
 
         diagnosticsListener?.onDecoderStateChanged(
             TrackDecoderStatus(
