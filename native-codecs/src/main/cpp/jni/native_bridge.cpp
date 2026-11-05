@@ -6,6 +6,7 @@
 #include "../audio/ffmpeg_audio_decoder.h"
 #include "../video/ffmpeg_video_decoder.h"
 #include "../video/dav1d_video_decoder.h"
+#include "../core/codec_inspector.h"
 #include "../common/logging.h"
 
 static JavaVM* g_vm = nullptr;
@@ -811,6 +812,65 @@ Java_com_nosved_native_1codecs_NativeLib_nativeReleaseAudioDecoder(
     if (handle == 0L) return;
     auto* decoder = reinterpret_cast<nosved::FfmpegAudioDecoder*>(handle);
     delete decoder;
+}
+
+// Codec Inspector JNI methods
+
+JNIEXPORT jboolean JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeIsDecoderCompiled(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring jCodecName) {
+    if (!jCodecName) return JNI_FALSE;
+    const char* chars = env->GetStringUTFChars(jCodecName, nullptr);
+    if (!chars) return JNI_FALSE;
+    std::string name(chars);
+    env->ReleaseStringUTFChars(jCodecName, chars);
+    return static_cast<jboolean>(nosved::CodecInspector::isDecoderCompiled(name));
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeGetCompiledDecodersJson(
+        JNIEnv* env,
+        jobject /* this */,
+        jint mediaType) {
+    std::string json = nosved::CodecInspector::getCompiledDecodersJson(mediaType);
+    return env->NewStringUTF(json.c_str());
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeGetDecoderDetailsJson(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring jCodecName) {
+    if (!jCodecName) return env->NewStringUTF("{}");
+    const char* chars = env->GetStringUTFChars(jCodecName, nullptr);
+    if (!chars) return env->NewStringUTF("{}");
+    std::string name(chars);
+    env->ReleaseStringUTFChars(jCodecName, chars);
+    std::string json = nosved::CodecInspector::getDecoderDetailsJson(name);
+    return env->NewStringUTF(json.c_str());
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeGetDav1dCapabilitiesJson(
+        JNIEnv* env,
+        jobject /* this */) {
+    std::string json = nosved::CodecInspector::getDav1dCapabilitiesJson();
+    return env->NewStringUTF(json.c_str());
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeTestDecoderInitialization(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring jCodecName) {
+    if (!jCodecName) return JNI_FALSE;
+    const char* chars = env->GetStringUTFChars(jCodecName, nullptr);
+    if (!chars) return JNI_FALSE;
+    std::string name(chars);
+    env->ReleaseStringUTFChars(jCodecName, chars);
+    return static_cast<jboolean>(nosved::CodecInspector::testDecoderInitialization(name));
 }
 
 } // extern "C"

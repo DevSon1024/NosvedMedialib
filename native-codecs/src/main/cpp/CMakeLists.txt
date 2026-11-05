@@ -43,6 +43,7 @@ set_target_properties(dav1d PROPERTIES IMPORTED_LOCATION ${FFMPEG_LIB_DIR}/libda
 add_library(${CMAKE_PROJECT_NAME} SHARED
     jni/native_bridge.cpp
     core/ffmpeg_init.cpp
+    core/codec_inspector.cpp
     audio/ffmpeg_audio_decoder.cpp
     video/ffmpeg_video_decoder.cpp
     video/dav1d_video_decoder.cpp

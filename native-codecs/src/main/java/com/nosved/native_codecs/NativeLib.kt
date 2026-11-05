@@ -684,8 +684,64 @@ class NativeLib {
         handle: Long,
         bufferIndex: Int
     )
+    fun isDecoderCompiled(codecName: String): Boolean {
+        if (!isLibraryLoaded) return false
+        return try {
+            nativeIsDecoderCompiled(codecName)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to check if decoder is compiled: $codecName", e)
+            false
+        }
+    }
+
+    fun getCompiledDecodersJson(mediaType: Int = 0): String {
+        if (!isLibraryLoaded) return "[]"
+        return try {
+            nativeGetCompiledDecodersJson(mediaType)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to get compiled decoders JSON", e)
+            "[]"
+        }
+    }
+
+    fun getDecoderDetailsJson(codecName: String): String {
+        if (!isLibraryLoaded) return "{}"
+        return try {
+            nativeGetDecoderDetailsJson(codecName)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to get decoder details JSON: $codecName", e)
+            "{}"
+        }
+    }
+
+    fun getDav1dCapabilitiesJson(): String {
+        if (!isLibraryLoaded) return "{}"
+        return try {
+            nativeGetDav1dCapabilitiesJson()
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to get dav1d capabilities JSON", e)
+            "{}"
+        }
+    }
+
+    fun testDecoderInitialization(codecName: String): Boolean {
+        if (!isLibraryLoaded) return false
+        return try {
+            nativeTestDecoderInitialization(codecName)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to test decoder initialization: $codecName", e)
+            false
+        }
+    }
+
     private external fun nativeFlushDav1dDecoder(handle: Long)
     private external fun nativeReleaseDav1dDecoder(handle: Long)
+
+    private external fun nativeIsDecoderCompiled(codecName: String): Boolean
+    private external fun nativeGetCompiledDecodersJson(mediaType: Int): String
+    private external fun nativeGetDecoderDetailsJson(codecName: String): String
+    private external fun nativeGetDav1dCapabilitiesJson(): String
+    private external fun nativeTestDecoderInitialization(codecName: String): Boolean
 
     companion object {
         private const val TAG = "NosvedNativeLib"
@@ -714,13 +770,19 @@ class NativeLib {
                     System.loadLibrary(lib)
                 }
                 isLibraryLoaded = true
-                Log.i(TAG, "All NosvedMedia native libraries loaded successfully")
+                try {
+                    Log.i(TAG, "All NosvedMedia native libraries loaded successfully")
+                } catch (_: Throwable) {}
             } catch (e: UnsatisfiedLinkError) {
                 isLibraryLoaded = false
-                Log.e(TAG, "Failed to load NosvedMedia native libraries", e)
+                try {
+                    Log.e(TAG, "Failed to load NosvedMedia native libraries: ${e.message}")
+                } catch (_: Throwable) {}
             } catch (e: SecurityException) {
                 isLibraryLoaded = false
-                Log.e(TAG, "Security exception loading NosvedMedia native libraries", e)
+                try {
+                    Log.e(TAG, "Security exception loading NosvedMedia native libraries: ${e.message}")
+                } catch (_: Throwable) {}
             }
         }
     }
