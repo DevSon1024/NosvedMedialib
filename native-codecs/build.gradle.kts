@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.nosved.native_codecs"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26

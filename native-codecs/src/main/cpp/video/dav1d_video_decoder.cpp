@@ -1,11 +1,16 @@
 #include "dav1d_video_decoder.h"
 #include "../common/logging.h"
 #include <cstring>
+#include <thread>
+#include <algorithm>
 
 namespace nosved {
 
 Dav1dVideoDecoder::Dav1dVideoDecoder() {
-    std::memset(&currentPicture_, 0, sizeof(currentPicture_));
+    for (int i = 0; i < MAX_DAV1D_OUTPUT_BUFFERS; ++i) {
+        std::memset(&outputPictures_[i], 0, sizeof(Dav1dPicture));
+        pictureValid_[i] = false;
+    }
 }
 
 Dav1dVideoDecoder::~Dav1dVideoDecoder() {
@@ -17,12 +22,14 @@ const char* Dav1dVideoDecoder::getVersion() {
 }
 
 bool Dav1dVideoDecoder::open(int width, int height, int nThreads) {
-    std::lock_guard<std::mutex> lock(mutex_);
     releaseResources();
+
+    std::lock_guard<std::mutex> codecLock(codecMutex_);
 
     Dav1dSettings settings;
     dav1d_default_settings(&settings);
-    settings.n_threads = nThreads > 0 ? nThreads : 0;
+    int cpuCores = static_cast<int>(std::thread::hardware_concurrency());
+    settings.n_threads = nThreads > 0 ? nThreads : ((cpuCores > 0) ? std::min(8, std::max(2, cpuCores)) : 4);
     settings.max_frame_delay = 1;
 
     int ret = dav1d_open(&context_, &settings);
@@ -31,21 +38,37 @@ bool Dav1dVideoDecoder::open(int width, int height, int nThreads) {
         return false;
     }
 
-    LOGI("Dav1dVideoDecoder opened successfully (dav1d %s)", dav1d_version());
+    LOGI("Dav1dVideoDecoder opened successfully (dav1d %s, threads=%d)", dav1d_version(), settings.n_threads);
     return true;
 }
 
-int Dav1dVideoDecoder::decode(const uint8_t* packetData, int packetSize, int64_t ptsUs, bool isEos) {
-    std::lock_guard<std::mutex> lock(mutex_);
+int Dav1dVideoDecoder::decode(int bufferIndex, const uint8_t* packetData, int packetSize, int64_t ptsUs, bool isEos) {
+    std::lock_guard<std::mutex> codecLock(codecMutex_);
     if (!context_) {
         return -EINVAL;
     }
 
+    int idx = (bufferIndex >= 0 && bufferIndex < MAX_DAV1D_OUTPUT_BUFFERS) ? bufferIndex : (std::abs(bufferIndex) % MAX_DAV1D_OUTPUT_BUFFERS);
+
     if (isEos) {
-        releasePicture();
-        int ret = dav1d_get_picture(context_, &currentPicture_);
+        Dav1dPicture pic;
+        std::memset(&pic, 0, sizeof(pic));
+        int ret = dav1d_get_picture(context_, &pic);
         if (ret == 0) {
-            hasPicture_ = true;
+            std::lock_guard<std::mutex> renderLock(renderMutex_);
+            if (pictureValid_[idx]) {
+                dav1d_picture_unref(&outputPictures_[idx]);
+            }
+            outputPictures_[idx] = pic;
+            pictureValid_[idx] = true;
+
+            frameInfos_[idx].width = pic.p.w;
+            frameInfos_[idx].height = pic.p.h;
+            frameInfos_[idx].pts = pic.m.timestamp;
+            frameInfos_[idx].bitDepth = pic.p.bpc;
+            frameInfos_[idx].format = static_cast<int>(pic.p.layout);
+            frameInfos_[idx].isKeyFrame = (pic.frame_hdr != nullptr) ? (pic.frame_hdr->frame_type == DAV1D_FRAME_TYPE_KEY) : false;
+
             return 0; // Decoded picture drained
         } else if (ret == DAV1D_ERR(EAGAIN)) {
             return 2; // All frames drained, end of stream
@@ -72,10 +95,24 @@ int Dav1dVideoDecoder::decode(const uint8_t* packetData, int packetSize, int64_t
             return sendRet;
         }
 
-        releasePicture();
-        int getRet = dav1d_get_picture(context_, &currentPicture_);
+        Dav1dPicture pic;
+        std::memset(&pic, 0, sizeof(pic));
+        int getRet = dav1d_get_picture(context_, &pic);
         if (getRet == 0) {
-            hasPicture_ = true;
+            std::lock_guard<std::mutex> renderLock(renderMutex_);
+            if (pictureValid_[idx]) {
+                dav1d_picture_unref(&outputPictures_[idx]);
+            }
+            outputPictures_[idx] = pic;
+            pictureValid_[idx] = true;
+
+            frameInfos_[idx].width = pic.p.w;
+            frameInfos_[idx].height = pic.p.h;
+            frameInfos_[idx].pts = pic.m.timestamp;
+            frameInfos_[idx].bitDepth = pic.p.bpc;
+            frameInfos_[idx].format = static_cast<int>(pic.p.layout);
+            frameInfos_[idx].isKeyFrame = (pic.frame_hdr != nullptr) ? (pic.frame_hdr->frame_type == DAV1D_FRAME_TYPE_KEY) : false;
+
             return 0; // Picture successfully decoded
         } else if (getRet == DAV1D_ERR(EAGAIN)) {
             return 1; // More data needed
@@ -88,36 +125,46 @@ int Dav1dVideoDecoder::decode(const uint8_t* packetData, int packetSize, int64_t
     return 1;
 }
 
-bool Dav1dVideoDecoder::getFrameInfo(VideoFrameInfo& outInfo) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!hasPicture_) {
+bool Dav1dVideoDecoder::getFrameInfo(int bufferIndex, VideoFrameInfo& outInfo) {
+    std::lock_guard<std::mutex> renderLock(renderMutex_);
+    int idx = (bufferIndex >= 0 && bufferIndex < MAX_DAV1D_OUTPUT_BUFFERS) ? bufferIndex : (std::abs(bufferIndex) % MAX_DAV1D_OUTPUT_BUFFERS);
+    if (!pictureValid_[idx]) {
         return false;
     }
-
-    outInfo.width = currentPicture_.p.w;
-    outInfo.height = currentPicture_.p.h;
-    outInfo.pts = currentPicture_.m.timestamp;
-    outInfo.bitDepth = currentPicture_.p.bpc;
-    outInfo.format = static_cast<int>(currentPicture_.p.layout);
-    outInfo.isKeyFrame = (currentPicture_.frame_hdr != nullptr) ? (currentPicture_.frame_hdr->frame_type == DAV1D_FRAME_TYPE_KEY) : false;
+    outInfo = frameInfos_[idx];
     return true;
 }
 
-bool Dav1dVideoDecoder::renderToSurface(ANativeWindow* window) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!hasPicture_ || !window) {
+bool Dav1dVideoDecoder::renderToSurface(int bufferIndex, ANativeWindow* window) {
+    if (!window) return false;
+
+    std::lock_guard<std::mutex> renderLock(renderMutex_);
+    int idx = (bufferIndex >= 0 && bufferIndex < MAX_DAV1D_OUTPUT_BUFFERS) ? bufferIndex : (std::abs(bufferIndex) % MAX_DAV1D_OUTPUT_BUFFERS);
+
+    if (!pictureValid_[idx]) {
         return false;
     }
 
-    int width = currentPicture_.p.w;
-    int height = currentPicture_.p.h;
-    int bpc = currentPicture_.p.bpc;
+    Dav1dPicture& pic = outputPictures_[idx];
+    int width = pic.p.w;
+    int height = pic.p.h;
+    int bpc = pic.p.bpc;
 
     if (width <= 0 || height <= 0) {
         return false;
     }
 
-    ANativeWindow_setBuffersGeometry(window, width, height, WINDOW_FORMAT_RGBA_8888);
+    if (cachedWidth_ != width || cachedHeight_ != height || cachedFormat_ != WINDOW_FORMAT_RGBA_8888) {
+        int setGeomRet = ANativeWindow_setBuffersGeometry(window, width, height, WINDOW_FORMAT_RGBA_8888);
+        if (setGeomRet >= 0) {
+            cachedWidth_ = width;
+            cachedHeight_ = height;
+            cachedFormat_ = WINDOW_FORMAT_RGBA_8888;
+        } else {
+            LOGE("ANativeWindow_setBuffersGeometry failed for dav1d: %d", setGeomRet);
+            return false;
+        }
+    }
 
     ANativeWindow_Buffer winBuffer;
     if (ANativeWindow_lock(window, &winBuffer, nullptr) < 0) {
@@ -130,7 +177,7 @@ bool Dav1dVideoDecoder::renderToSurface(ANativeWindow* window) {
     swsContext_ = sws_getCachedContext(
         swsContext_,
         width, height, srcFmt,
-        width, height, AV_PIX_FMT_RGBA,
+        winBuffer.width, winBuffer.height, AV_PIX_FMT_RGBA,
         SWS_FAST_BILINEAR, nullptr, nullptr, nullptr
     );
 
@@ -141,14 +188,14 @@ bool Dav1dVideoDecoder::renderToSurface(ANativeWindow* window) {
     }
 
     const uint8_t* srcPlanes[3] = {
-        static_cast<const uint8_t*>(currentPicture_.data[0]),
-        static_cast<const uint8_t*>(currentPicture_.data[1]),
-        static_cast<const uint8_t*>(currentPicture_.data[2])
+        static_cast<const uint8_t*>(pic.data[0]),
+        static_cast<const uint8_t*>(pic.data[1]),
+        static_cast<const uint8_t*>(pic.data[2])
     };
     const int srcStrides[3] = {
-        static_cast<int>(currentPicture_.stride[0]),
-        static_cast<int>(currentPicture_.stride[1]),
-        static_cast<int>(currentPicture_.stride[1])
+        static_cast<int>(pic.stride[0]),
+        static_cast<int>(pic.stride[1]),
+        static_cast<int>(pic.stride[1])
     };
 
     uint8_t* dstPlanes[4] = { static_cast<uint8_t*>(winBuffer.bits), nullptr, nullptr, nullptr };
@@ -160,45 +207,61 @@ bool Dav1dVideoDecoder::renderToSurface(ANativeWindow* window) {
     return true;
 }
 
+void Dav1dVideoDecoder::releaseFrame(int bufferIndex) {
+    std::lock_guard<std::mutex> renderLock(renderMutex_);
+    int idx = (bufferIndex >= 0 && bufferIndex < MAX_DAV1D_OUTPUT_BUFFERS) ? bufferIndex : (std::abs(bufferIndex) % MAX_DAV1D_OUTPUT_BUFFERS);
+    if (pictureValid_[idx]) {
+        dav1d_picture_unref(&outputPictures_[idx]);
+        pictureValid_[idx] = false;
+    }
+}
+
 void Dav1dVideoDecoder::flush() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    releasePicture();
-    if (context_) {
-        dav1d_flush(context_);
+    {
+        std::lock_guard<std::mutex> codecLock(codecMutex_);
+        if (context_) {
+            dav1d_flush(context_);
+        }
+    }
+    {
+        std::lock_guard<std::mutex> renderLock(renderMutex_);
+        for (int i = 0; i < MAX_DAV1D_OUTPUT_BUFFERS; ++i) {
+            if (pictureValid_[i]) {
+                dav1d_picture_unref(&outputPictures_[i]);
+                pictureValid_[i] = false;
+            }
+        }
     }
 }
 
 void Dav1dVideoDecoder::releaseResources() {
-    releasePicture();
-    releaseSws();
-    if (context_) {
-        dav1d_close(&context_);
-        context_ = nullptr;
+    {
+        std::lock_guard<std::mutex> codecLock(codecMutex_);
+        if (context_) {
+            dav1d_close(&context_);
+            context_ = nullptr;
+        }
+    }
+    {
+        std::lock_guard<std::mutex> renderLock(renderMutex_);
+        for (int i = 0; i < MAX_DAV1D_OUTPUT_BUFFERS; ++i) {
+            if (pictureValid_[i]) {
+                dav1d_picture_unref(&outputPictures_[i]);
+                pictureValid_[i] = false;
+            }
+        }
+        if (swsContext_) {
+            sws_freeContext(swsContext_);
+            swsContext_ = nullptr;
+        }
+        cachedWidth_ = 0;
+        cachedHeight_ = 0;
+        cachedFormat_ = -1;
     }
 }
 
 void Dav1dVideoDecoder::close() {
-    std::lock_guard<std::mutex> lock(mutex_);
     releaseResources();
 }
 
-void Dav1dVideoDecoder::releasePicture() {
-    if (hasPicture_) {
-        dav1d_picture_unref(&currentPicture_);
-        std::memset(&currentPicture_, 0, sizeof(currentPicture_));
-        hasPicture_ = false;
-    }
-}
-
-void Dav1dVideoDecoder::releaseSws() {
-    if (swsContext_) {
-        sws_freeContext(swsContext_);
-        swsContext_ = nullptr;
-        swsSrcWidth_ = 0;
-        swsSrcHeight_ = 0;
-        swsSrcBpc_ = 0;
-    }
-}
-
 } // namespace nosved
-

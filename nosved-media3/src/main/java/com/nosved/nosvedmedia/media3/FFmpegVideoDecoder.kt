@@ -9,6 +9,8 @@ import androidx.media3.decoder.SimpleDecoder
 import androidx.media3.decoder.VideoDecoderOutputBuffer
 import com.nosved.native_codecs.NativeLib
 import java.nio.ByteBuffer
+import java.util.Collections
+import java.util.IdentityHashMap
 
 @UnstableApi
 class FFmpegVideoDecoder(
@@ -18,12 +20,20 @@ class FFmpegVideoDecoder(
     val diagnosticsListener: PlaybackDiagnosticsListener? = null
 ) : SimpleDecoder<DecoderInputBuffer, VideoDecoderOutputBuffer, FFmpegDecoderException>(
     Array(config.numInputBuffers) { DecoderInputBuffer(DecoderInputBuffer.BUFFER_REPLACEMENT_MODE_DIRECT) },
-    Array(config.numOutputBuffers) { VideoDecoderOutputBuffer { /* outputBuffer -> releaseOutputBuffer(outputBuffer) */ } }
+    Array(config.numOutputBuffers) { VideoDecoderOutputBuffer { } }
 ) {
 
     private val nativeLib = NativeLib()
     private var nativeHandle: Long = 0L
     private val frameInfo = IntArray(4)
+    private val bufferIndices = Collections.synchronizedMap(IdentityHashMap<VideoDecoderOutputBuffer, Int>())
+    private var bufferCounter = 0
+
+    private fun getBufferId(buffer: VideoDecoderOutputBuffer): Int {
+        return bufferIndices.getOrPut(buffer) {
+            (bufferCounter++) % config.numOutputBuffers
+        }
+    }
 
     init {
         val mimeType = format.sampleMimeType ?: throw FFmpegDecoderException("MIME type not specified in format")
@@ -81,6 +91,15 @@ class FFmpegVideoDecoder(
     override fun createOutputBuffer(): VideoDecoderOutputBuffer =
         VideoDecoderOutputBuffer { outputBuffer -> releaseOutputBuffer(outputBuffer) }
 
+    override fun releaseOutputBuffer(outputBuffer: VideoDecoderOutputBuffer) {
+        val handle = nativeHandle
+        if (handle != 0L) {
+            val bufferId = getBufferId(outputBuffer)
+            nativeLib.releaseVideoFrame(handle, bufferId)
+        }
+        super.releaseOutputBuffer(outputBuffer)
+    }
+
     override fun createUnexpectedDecodeException(error: Throwable): FFmpegDecoderException =
         FFmpegDecoderException("Unexpected FFmpeg decode error", cause = error)
 
@@ -97,8 +116,10 @@ class FFmpegVideoDecoder(
             nativeLib.flushVideoDecoder(nativeHandle)
         }
 
+        val bufferId = getBufferId(outputBuffer)
+
         if (inputBuffer.isEndOfStream) {
-            nativeLib.decodeVideo(nativeHandle, null, 0, 0, inputBuffer.timeUs, true)
+            nativeLib.decodeVideo(nativeHandle, bufferId, null, 0, 0, inputBuffer.timeUs, true)
             outputBuffer.addFlag(C.BUFFER_FLAG_END_OF_STREAM)
             return null
         }
@@ -110,6 +131,7 @@ class FFmpegVideoDecoder(
         val startTimeNs = System.nanoTime()
         val decodeResult = nativeLib.decodeVideo(
             nativeHandle,
+            bufferId,
             data,
             offset,
             length,
@@ -134,10 +156,12 @@ class FFmpegVideoDecoder(
                 return null
             }
             decodeResult == 0 -> {
-                if (nativeLib.getVideoFrameInfo(nativeHandle, frameInfo)) {
+                if (nativeLib.getVideoFrameInfo(nativeHandle, bufferId, frameInfo)) {
                     val frameWidth = frameInfo[0]
                     val frameHeight = frameInfo[1]
-                    outputBuffer.init(inputBuffer.timeUs, C.VIDEO_OUTPUT_MODE_SURFACE_YUV, null)
+                    val framePts = nativeLib.getVideoFramePts(nativeHandle, bufferId)
+                    val ptsToUse = if (framePts >= 0L) framePts else inputBuffer.timeUs
+                    outputBuffer.init(ptsToUse, C.VIDEO_OUTPUT_MODE_SURFACE_YUV, null)
                     outputBuffer.width = frameWidth
                     outputBuffer.height = frameHeight
                 }
@@ -155,7 +179,8 @@ class FFmpegVideoDecoder(
 
     fun renderToSurface(outputBuffer: VideoDecoderOutputBuffer, surface: Surface): Boolean {
         if (nativeHandle == 0L) return false
-        return nativeLib.renderVideoFrameToSurface(nativeHandle, surface)
+        val bufferId = getBufferId(outputBuffer)
+        return nativeLib.renderVideoFrameToSurface(nativeHandle, bufferId, surface)
     }
 
     override fun release() {

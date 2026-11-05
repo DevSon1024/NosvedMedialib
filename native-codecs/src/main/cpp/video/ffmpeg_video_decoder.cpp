@@ -1,6 +1,8 @@
 #include "ffmpeg_video_decoder.h"
 #include "../common/logging.h"
 #include <cstring>
+#include <algorithm>
+#include <thread>
 
 namespace nosved {
 
@@ -24,13 +26,14 @@ enum AVCodecID FfmpegVideoDecoder::getCodecIdForMimeType(const std::string& mime
 static void convertAvcOrHevcToAnnexB(uint8_t* data, int size) {
     if (!data || size < 4) return;
 
-    if (data[0] == 0 && data[1] == 0) {
-        if (data[2] == 1 || (size >= 4 && data[2] == 0 && data[3] == 1)) {
-            return;
-        }
+    // Check if already 4-byte Annex B
+    if (data[0] == 0 && data[1] == 0 && data[2] == 0 && data[3] == 1) {
+        return;
     }
 
+    // Check if length-prefixed (AVCC/HVCC format)
     int offset = 0;
+    bool isLengthPrefixed = false;
     while (offset + 4 <= size) {
         uint32_t nalLen = (static_cast<uint32_t>(data[offset]) << 24) |
                           (static_cast<uint32_t>(data[offset + 1]) << 16) |
@@ -41,18 +44,49 @@ static void convertAvcOrHevcToAnnexB(uint8_t* data, int size) {
             break;
         }
 
-        data[offset] = 0x00;
-        data[offset + 1] = 0x00;
-        data[offset + 2] = 0x00;
-        data[offset + 3] = 0x01;
-
         offset += 4 + nalLen;
+        if (offset == size || (offset <= size && offset >= size - 4)) {
+            isLengthPrefixed = true;
+            break;
+        }
+    }
+
+    if (!isLengthPrefixed) {
+        uint32_t firstLen = (static_cast<uint32_t>(data[0]) << 24) |
+                            (static_cast<uint32_t>(data[1]) << 16) |
+                            (static_cast<uint32_t>(data[2]) << 8) |
+                            static_cast<uint32_t>(data[3]);
+        if (firstLen > 4 && firstLen <= static_cast<uint32_t>(size - 4)) {
+            isLengthPrefixed = true;
+        }
+    }
+
+    if (isLengthPrefixed) {
+        offset = 0;
+        while (offset + 4 <= size) {
+            uint32_t nalLen = (static_cast<uint32_t>(data[offset]) << 24) |
+                              (static_cast<uint32_t>(data[offset + 1]) << 16) |
+                              (static_cast<uint32_t>(data[offset + 2]) << 8) |
+                              static_cast<uint32_t>(data[offset + 3]);
+
+            if (nalLen == 0 || offset + 4 + nalLen > static_cast<uint32_t>(size)) {
+                break;
+            }
+
+            data[offset] = 0x00;
+            data[offset + 1] = 0x00;
+            data[offset + 2] = 0x00;
+            data[offset + 3] = 0x01;
+
+            offset += 4 + nalLen;
+        }
     }
 }
 
 bool FfmpegVideoDecoder::open(const std::string& mimeType, const uint8_t* extraData, int extraDataSize, int width, int height) {
-    std::lock_guard<std::mutex> lock(mutex_);
     releaseResources();
+
+    std::lock_guard<std::mutex> codecLock(codecMutex_);
 
     enum AVCodecID codecId = getCodecIdForMimeType(mimeType);
     if (codecId == AV_CODEC_ID_NONE) {
@@ -85,8 +119,13 @@ bool FfmpegVideoDecoder::open(const std::string& mimeType, const uint8_t* extraD
     if (width > 0) codecContext_->width = width;
     if (height > 0) codecContext_->height = height;
 
-    // Enable multithreaded decoding automatically based on available cores
-    codecContext_->thread_count = 0;
+    // Multi-threaded decoding: utilize available cores with frame & slice parallelization, zero pipeline delay
+    int cpuCores = static_cast<int>(std::thread::hardware_concurrency());
+    codecContext_->thread_count = (cpuCores > 0) ? std::min(4, std::max(2, cpuCores)) : 4;
+    codecContext_->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+    codecContext_->delay = 0;
+    codecContext_->flags |= AV_CODEC_FLAG_LOW_DELAY;
+    codecContext_->flags2 |= AV_CODEC_FLAG2_FAST;
 
     int ret = avcodec_open2(codecContext_, codec, nullptr);
     if (ret < 0) {
@@ -98,23 +137,25 @@ bool FfmpegVideoDecoder::open(const std::string& mimeType, const uint8_t* extraD
     }
 
     packet_ = av_packet_alloc();
-    frame_ = av_frame_alloc();
+    tempFrame_ = av_frame_alloc();
 
-    if (!packet_ || !frame_) {
-        LOGE("Failed to allocate AVPacket or AVFrame");
+    if (!packet_ || !tempFrame_) {
+        LOGE("Failed to allocate AVPacket or temp AVFrame");
         releaseResources();
         return false;
     }
 
-    LOGI("FfmpegVideoDecoder opened successfully for %s (%s)", mimeType.c_str(), codec->name);
+    LOGI("FfmpegVideoDecoder opened successfully for %s (%s, threads=%d)", mimeType.c_str(), codec->name, codecContext_->thread_count);
     return true;
 }
 
-int FfmpegVideoDecoder::decode(const uint8_t* packetData, int packetSize, int64_t ptsUs, bool isEos) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!codecContext_ || !packet_ || !frame_) {
+int FfmpegVideoDecoder::decode(int bufferIndex, const uint8_t* packetData, int packetSize, int64_t ptsUs, bool isEos) {
+    std::lock_guard<std::mutex> codecLock(codecMutex_);
+    if (!codecContext_ || !packet_ || !tempFrame_) {
         return AVERROR(EINVAL);
     }
+
+    int idx = (bufferIndex >= 0 && bufferIndex < MAX_OUTPUT_BUFFERS) ? bufferIndex : (std::abs(bufferIndex) % MAX_OUTPUT_BUFFERS);
 
     if (isEos) {
         int ret = avcodec_send_packet(codecContext_, nullptr);
@@ -143,14 +184,24 @@ int FfmpegVideoDecoder::decode(const uint8_t* packetData, int packetSize, int64_
         }
     }
 
-    int rec = avcodec_receive_frame(codecContext_, frame_);
+    int rec = avcodec_receive_frame(codecContext_, tempFrame_);
     if (rec == 0) {
-        latestFrameInfo_.width = frame_->width;
-        latestFrameInfo_.height = frame_->height;
-        latestFrameInfo_.pts = frame_->pts;
-        latestFrameInfo_.format = frame_->format;
-        latestFrameInfo_.isKeyFrame = (frame_->flags & AV_FRAME_FLAG_KEY) != 0;
-        hasLatestFrame_ = true;
+        std::lock_guard<std::mutex> renderLock(renderMutex_);
+        if (!outputFrames_[idx]) {
+            outputFrames_[idx] = av_frame_alloc();
+        } else {
+            av_frame_unref(outputFrames_[idx]);
+        }
+
+        av_frame_move_ref(outputFrames_[idx], tempFrame_);
+
+        frameInfos_[idx].width = outputFrames_[idx]->width;
+        frameInfos_[idx].height = outputFrames_[idx]->height;
+        frameInfos_[idx].pts = (outputFrames_[idx]->pts != AV_NOPTS_VALUE) ? outputFrames_[idx]->pts : ptsUs;
+        frameInfos_[idx].format = outputFrames_[idx]->format;
+        frameInfos_[idx].isKeyFrame = (outputFrames_[idx]->flags & AV_FRAME_FLAG_KEY) != 0;
+        frameValid_[idx] = true;
+
         return 0; // Frame ready
     } else if (rec == AVERROR(EAGAIN)) {
         return 1; // Needs more packets
@@ -162,29 +213,43 @@ int FfmpegVideoDecoder::decode(const uint8_t* packetData, int packetSize, int64_
     return rec; // Decode error
 }
 
-bool FfmpegVideoDecoder::getLatestFrameInfo(VideoFrameInfo* outInfo) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!outInfo || !hasLatestFrame_) {
+bool FfmpegVideoDecoder::getFrameInfo(int bufferIndex, VideoFrameInfo* outInfo) {
+    if (!outInfo) return false;
+    std::lock_guard<std::mutex> renderLock(renderMutex_);
+    int idx = (bufferIndex >= 0 && bufferIndex < MAX_OUTPUT_BUFFERS) ? bufferIndex : (std::abs(bufferIndex) % MAX_OUTPUT_BUFFERS);
+    if (!frameValid_[idx]) {
         return false;
     }
-    *outInfo = latestFrameInfo_;
+    *outInfo = frameInfos_[idx];
     return true;
 }
 
-bool FfmpegVideoDecoder::renderToSurface(ANativeWindow* window) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!window || !hasLatestFrame_ || !frame_ || frame_->width <= 0 || frame_->height <= 0) {
+bool FfmpegVideoDecoder::renderToSurface(int bufferIndex, ANativeWindow* window) {
+    if (!window) return false;
+
+    std::lock_guard<std::mutex> renderLock(renderMutex_);
+    int idx = (bufferIndex >= 0 && bufferIndex < MAX_OUTPUT_BUFFERS) ? bufferIndex : (std::abs(bufferIndex) % MAX_OUTPUT_BUFFERS);
+    AVFrame* frame = outputFrames_[idx];
+
+    if (!frameValid_[idx] || !frame || frame->width <= 0 || frame->height <= 0) {
         return false;
     }
 
-    int frameW = frame_->width;
-    int frameH = frame_->height;
-    enum AVPixelFormat srcFormat = static_cast<enum AVPixelFormat>(frame_->format);
+    int frameW = frame->width;
+    int frameH = frame->height;
+    enum AVPixelFormat srcFormat = static_cast<enum AVPixelFormat>(frame->format);
 
-    int setGeomRet = ANativeWindow_setBuffersGeometry(window, frameW, frameH, WINDOW_FORMAT_RGBA_8888);
-    if (setGeomRet < 0) {
-        LOGE("ANativeWindow_setBuffersGeometry failed: %d", setGeomRet);
-        return false;
+    // Set buffer geometry only when dimensions change to avoid SurfaceFlinger buffer reallocations
+    if (cachedWidth_ != frameW || cachedHeight_ != frameH || cachedFormat_ != WINDOW_FORMAT_RGBA_8888) {
+        int setGeomRet = ANativeWindow_setBuffersGeometry(window, frameW, frameH, WINDOW_FORMAT_RGBA_8888);
+        if (setGeomRet >= 0) {
+            cachedWidth_ = frameW;
+            cachedHeight_ = frameH;
+            cachedFormat_ = WINDOW_FORMAT_RGBA_8888;
+        } else {
+            LOGE("ANativeWindow_setBuffersGeometry failed: %d", setGeomRet);
+            return false;
+        }
     }
 
     ANativeWindow_Buffer windowBuffer;
@@ -196,7 +261,7 @@ bool FfmpegVideoDecoder::renderToSurface(ANativeWindow* window) {
     swsContext_ = sws_getCachedContext(
         swsContext_,
         frameW, frameH, srcFormat,
-        frameW, frameH, AV_PIX_FMT_RGBA,
+        windowBuffer.width, windowBuffer.height, AV_PIX_FMT_RGBA,
         SWS_FAST_BILINEAR,
         nullptr, nullptr, nullptr
     );
@@ -210,54 +275,82 @@ bool FfmpegVideoDecoder::renderToSurface(ANativeWindow* window) {
     uint8_t* dstData[4] = { static_cast<uint8_t*>(windowBuffer.bits), nullptr, nullptr, nullptr };
     int dstLinesize[4] = { windowBuffer.stride * 4, 0, 0, 0 };
 
-    sws_scale(swsContext_, frame_->data, frame_->linesize, 0, frameH, dstData, dstLinesize);
+    sws_scale(swsContext_, frame->data, frame->linesize, 0, frameH, dstData, dstLinesize);
 
     ANativeWindow_unlockAndPost(window);
     return true;
 }
 
+void FfmpegVideoDecoder::releaseFrame(int bufferIndex) {
+    std::lock_guard<std::mutex> renderLock(renderMutex_);
+    int idx = (bufferIndex >= 0 && bufferIndex < MAX_OUTPUT_BUFFERS) ? bufferIndex : (std::abs(bufferIndex) % MAX_OUTPUT_BUFFERS);
+    if (outputFrames_[idx]) {
+        av_frame_unref(outputFrames_[idx]);
+    }
+    frameValid_[idx] = false;
+}
+
 void FfmpegVideoDecoder::flush() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (codecContext_) {
-        avcodec_flush_buffers(codecContext_);
+    {
+        std::lock_guard<std::mutex> codecLock(codecMutex_);
+        if (codecContext_) {
+            avcodec_flush_buffers(codecContext_);
+        }
+        if (tempFrame_) {
+            av_frame_unref(tempFrame_);
+        }
+        isEos_ = false;
     }
-    if (packet_) {
-        av_packet_unref(packet_);
+    {
+        std::lock_guard<std::mutex> renderLock(renderMutex_);
+        for (int i = 0; i < MAX_OUTPUT_BUFFERS; ++i) {
+            if (outputFrames_[i]) {
+                av_frame_unref(outputFrames_[i]);
+            }
+            frameValid_[i] = false;
+        }
     }
-    if (frame_) {
-        av_frame_unref(frame_);
-    }
-    hasLatestFrame_ = false;
-    isEos_ = false;
-    codecId_ = AV_CODEC_ID_NONE;
 }
 
 void FfmpegVideoDecoder::releaseResources() {
-    if (swsContext_) {
-        sws_freeContext(swsContext_);
-        swsContext_ = nullptr;
+    {
+        std::lock_guard<std::mutex> codecLock(codecMutex_);
+        if (tempFrame_) {
+            av_frame_free(&tempFrame_);
+            tempFrame_ = nullptr;
+        }
+        if (packet_) {
+            av_packet_free(&packet_);
+            packet_ = nullptr;
+        }
+        if (codecContext_) {
+            avcodec_free_context(&codecContext_);
+            codecContext_ = nullptr;
+        }
+        codecId_ = AV_CODEC_ID_NONE;
+        isEos_ = false;
     }
-    if (frame_) {
-        av_frame_free(&frame_);
-        frame_ = nullptr;
+    {
+        std::lock_guard<std::mutex> renderLock(renderMutex_);
+        for (int i = 0; i < MAX_OUTPUT_BUFFERS; ++i) {
+            if (outputFrames_[i]) {
+                av_frame_free(&outputFrames_[i]);
+                outputFrames_[i] = nullptr;
+            }
+            frameValid_[i] = false;
+        }
+        if (swsContext_) {
+            sws_freeContext(swsContext_);
+            swsContext_ = nullptr;
+        }
+        cachedWidth_ = 0;
+        cachedHeight_ = 0;
+        cachedFormat_ = -1;
     }
-    if (packet_) {
-        av_packet_free(&packet_);
-        packet_ = nullptr;
-    }
-    if (codecContext_) {
-        avcodec_free_context(&codecContext_);
-        codecContext_ = nullptr;
-    }
-    hasLatestFrame_ = false;
-    isEos_ = false;
-    codecId_ = AV_CODEC_ID_NONE;
 }
 
 void FfmpegVideoDecoder::close() {
-    std::lock_guard<std::mutex> lock(mutex_);
     releaseResources();
 }
 
 } // namespace nosved
-

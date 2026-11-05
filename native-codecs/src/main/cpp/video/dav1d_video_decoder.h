@@ -3,6 +3,8 @@
 
 #include <string>
 #include <mutex>
+#include <thread>
+#include <algorithm>
 #include <android/native_window.h>
 #include "video_frame.h"
 
@@ -14,6 +16,8 @@ extern "C" {
 
 namespace nosved {
 
+constexpr int MAX_DAV1D_OUTPUT_BUFFERS = 16;
+
 class Dav1dVideoDecoder {
 public:
     Dav1dVideoDecoder();
@@ -23,9 +27,10 @@ public:
     Dav1dVideoDecoder& operator=(const Dav1dVideoDecoder&) = delete;
 
     bool open(int width = 0, int height = 0, int nThreads = 0);
-    int decode(const uint8_t* packetData, int packetSize, int64_t ptsUs, bool isEos);
-    bool getFrameInfo(VideoFrameInfo& outInfo);
-    bool renderToSurface(ANativeWindow* window);
+    int decode(int bufferIndex, const uint8_t* packetData, int packetSize, int64_t ptsUs, bool isEos);
+    bool getFrameInfo(int bufferIndex, VideoFrameInfo& outInfo);
+    bool renderToSurface(int bufferIndex, ANativeWindow* window);
+    void releaseFrame(int bufferIndex);
     void flush();
     void close();
 
@@ -33,21 +38,21 @@ public:
 
 private:
     void releaseResources();
-    void releasePicture();
-    void releaseSws();
 
-    std::mutex mutex_;
+    std::mutex codecMutex_;
     Dav1dContext* context_ = nullptr;
-    Dav1dPicture currentPicture_;
-    bool hasPicture_ = false;
+
+    std::mutex renderMutex_;
+    Dav1dPicture outputPictures_[MAX_DAV1D_OUTPUT_BUFFERS];
+    bool pictureValid_[MAX_DAV1D_OUTPUT_BUFFERS] = { false };
+    VideoFrameInfo frameInfos_[MAX_DAV1D_OUTPUT_BUFFERS] = {};
 
     SwsContext* swsContext_ = nullptr;
-    int swsSrcWidth_ = 0;
-    int swsSrcHeight_ = 0;
-    int swsSrcBpc_ = 0;
+    int cachedWidth_ = 0;
+    int cachedHeight_ = 0;
+    int cachedFormat_ = -1;
 };
 
 } // namespace nosved
 
 #endif // NOSVED_MEDIA_DAV1D_VIDEO_DECODER_H
-

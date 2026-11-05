@@ -159,6 +159,7 @@ Java_com_nosved_native_1codecs_NativeLib_nativeDecodeVideo(
         JNIEnv* env,
         jobject /* this */,
         jlong handle,
+        jint bufferIndex,
         jobject jByteBuffer,
         jint offset,
         jint length,
@@ -175,7 +176,7 @@ Java_com_nosved_native_1codecs_NativeLib_nativeDecodeVideo(
         }
     }
 
-    return decoder->decode(data, length, timeUs, isEos == JNI_TRUE);
+    return decoder->decode(bufferIndex, data, length, timeUs, isEos == JNI_TRUE);
 }
 
 JNIEXPORT jboolean JNICALL
@@ -183,12 +184,13 @@ Java_com_nosved_native_1codecs_NativeLib_nativeGetVideoFrameInfo(
         JNIEnv* env,
         jobject /* this */,
         jlong handle,
+        jint bufferIndex,
         jintArray jOutInfo) {
     if (handle == 0L || !jOutInfo) return JNI_FALSE;
     auto* decoder = reinterpret_cast<nosved::FfmpegVideoDecoder*>(handle);
 
     nosved::VideoFrameInfo info;
-    if (!decoder->getLatestFrameInfo(&info)) {
+    if (!decoder->getFrameInfo(bufferIndex, &info)) {
         return JNI_FALSE;
     }
 
@@ -202,11 +204,27 @@ Java_com_nosved_native_1codecs_NativeLib_nativeGetVideoFrameInfo(
     return JNI_TRUE;
 }
 
+JNIEXPORT jlong JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeGetVideoFramePts(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle,
+        jint bufferIndex) {
+    if (handle == 0L) return -1LL;
+    auto* decoder = reinterpret_cast<nosved::FfmpegVideoDecoder*>(handle);
+    nosved::VideoFrameInfo info;
+    if (!decoder->getFrameInfo(bufferIndex, &info)) {
+        return -1LL;
+    }
+    return static_cast<jlong>(info.pts);
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_nosved_native_1codecs_NativeLib_nativeRenderVideoFrameToSurface(
         JNIEnv* env,
         jobject /* this */,
         jlong handle,
+        jint bufferIndex,
         jobject jSurface) {
     if (handle == 0L || !jSurface) return JNI_FALSE;
     auto* decoder = reinterpret_cast<nosved::FfmpegVideoDecoder*>(handle);
@@ -217,9 +235,20 @@ Java_com_nosved_native_1codecs_NativeLib_nativeRenderVideoFrameToSurface(
         return JNI_FALSE;
     }
 
-    bool success = decoder->renderToSurface(window);
+    bool success = decoder->renderToSurface(bufferIndex, window);
     ANativeWindow_release(window);
     return static_cast<jboolean>(success);
+}
+
+JNIEXPORT void JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeReleaseVideoFrame(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle,
+        jint bufferIndex) {
+    if (handle == 0L) return;
+    auto* decoder = reinterpret_cast<nosved::FfmpegVideoDecoder*>(handle);
+    decoder->releaseFrame(bufferIndex);
 }
 
 JNIEXPORT void JNICALL
@@ -270,6 +299,7 @@ Java_com_nosved_native_1codecs_NativeLib_nativeDecodeDav1d(
         JNIEnv* env,
         jobject /* this */,
         jlong handle,
+        jint bufferIndex,
         jobject jByteBuffer,
         jint offset,
         jint length,
@@ -286,7 +316,7 @@ Java_com_nosved_native_1codecs_NativeLib_nativeDecodeDav1d(
         }
     }
 
-    return decoder->decode(packetData, length, ptsUs, static_cast<bool>(isEos));
+    return decoder->decode(bufferIndex, packetData, length, ptsUs, static_cast<bool>(isEos));
 }
 
 JNIEXPORT jboolean JNICALL
@@ -294,12 +324,13 @@ Java_com_nosved_native_1codecs_NativeLib_nativeGetDav1dFrameInfo(
         JNIEnv* env,
         jobject /* this */,
         jlong handle,
+        jint bufferIndex,
         jintArray jOutInfo) {
     if (handle == 0L || !jOutInfo) return JNI_FALSE;
     auto* decoder = reinterpret_cast<nosved::Dav1dVideoDecoder*>(handle);
 
     nosved::VideoFrameInfo info;
-    if (!decoder->getFrameInfo(info)) {
+    if (!decoder->getFrameInfo(bufferIndex, info)) {
         return JNI_FALSE;
     }
 
@@ -314,11 +345,27 @@ Java_com_nosved_native_1codecs_NativeLib_nativeGetDav1dFrameInfo(
     return JNI_TRUE;
 }
 
+JNIEXPORT jlong JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeGetDav1dFramePts(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle,
+        jint bufferIndex) {
+    if (handle == 0L) return -1LL;
+    auto* decoder = reinterpret_cast<nosved::Dav1dVideoDecoder*>(handle);
+    nosved::VideoFrameInfo info;
+    if (!decoder->getFrameInfo(bufferIndex, info)) {
+        return -1LL;
+    }
+    return static_cast<jlong>(info.pts);
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_nosved_native_1codecs_NativeLib_nativeRenderDav1dFrameToSurface(
         JNIEnv* env,
         jobject /* this */,
         jlong handle,
+        jint bufferIndex,
         jobject jSurface) {
     if (handle == 0L || !jSurface) return JNI_FALSE;
     auto* decoder = reinterpret_cast<nosved::Dav1dVideoDecoder*>(handle);
@@ -329,9 +376,20 @@ Java_com_nosved_native_1codecs_NativeLib_nativeRenderDav1dFrameToSurface(
         return JNI_FALSE;
     }
 
-    bool success = decoder->renderToSurface(window);
+    bool success = decoder->renderToSurface(bufferIndex, window);
     ANativeWindow_release(window);
     return static_cast<jboolean>(success);
+}
+
+JNIEXPORT void JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeReleaseDav1dFrame(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle,
+        jint bufferIndex) {
+    if (handle == 0L) return;
+    auto* decoder = reinterpret_cast<nosved::Dav1dVideoDecoder*>(handle);
+    decoder->releaseFrame(bufferIndex);
 }
 
 JNIEXPORT void JNICALL

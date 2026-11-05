@@ -120,33 +120,52 @@ class NativeLib {
         }
     }
 
-    fun decodeVideo(handle: Long, buffer: ByteBuffer?, offset: Int, length: Int, timeUs: Long, isEos: Boolean): Int {
+    fun decodeVideo(handle: Long, bufferIndex: Int, buffer: ByteBuffer?, offset: Int, length: Int, timeUs: Long, isEos: Boolean): Int {
         if (!isLibraryLoaded || handle == 0L) return -1
         return try {
-            nativeDecodeVideo(handle, buffer, offset, length, timeUs, isEos)
+            nativeDecodeVideo(handle, bufferIndex, buffer, offset, length, timeUs, isEos)
         } catch (e: UnsatisfiedLinkError) {
             Log.e(TAG, "Failed to decode video", e)
             -1
         }
     }
 
-    fun getVideoFrameInfo(handle: Long, outInfo: IntArray): Boolean {
+    fun getVideoFrameInfo(handle: Long, bufferIndex: Int, outInfo: IntArray): Boolean {
         if (!isLibraryLoaded || handle == 0L) return false
         return try {
-            nativeGetVideoFrameInfo(handle, outInfo)
+            nativeGetVideoFrameInfo(handle, bufferIndex, outInfo)
         } catch (e: UnsatisfiedLinkError) {
             Log.e(TAG, "Failed to get video frame info", e)
             false
         }
     }
 
-    fun renderVideoFrameToSurface(handle: Long, surface: Surface): Boolean {
+    fun getVideoFramePts(handle: Long, bufferIndex: Int): Long {
+        if (!isLibraryLoaded || handle == 0L) return -1L
+        return try {
+            nativeGetVideoFramePts(handle, bufferIndex)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to get video frame pts", e)
+            -1L
+        }
+    }
+
+    fun renderVideoFrameToSurface(handle: Long, bufferIndex: Int, surface: Surface): Boolean {
         if (!isLibraryLoaded || handle == 0L) return false
         return try {
-            nativeRenderVideoFrameToSurface(handle, surface)
+            nativeRenderVideoFrameToSurface(handle, bufferIndex, surface)
         } catch (e: UnsatisfiedLinkError) {
             Log.e(TAG, "Failed to render video frame to surface", e)
             false
+        }
+    }
+
+    fun releaseVideoFrame(handle: Long, bufferIndex: Int) {
+        if (!isLibraryLoaded || handle == 0L) return
+        try {
+            nativeReleaseVideoFrame(handle, bufferIndex)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to release video frame", e)
         }
     }
 
@@ -202,6 +221,7 @@ class NativeLib {
 
     fun decodeDav1d(
         handle: Long,
+        bufferIndex: Int,
         buffer: ByteBuffer?,
         offset: Int,
         length: Int,
@@ -210,30 +230,49 @@ class NativeLib {
     ): Int {
         if (!isLibraryLoaded || handle == 0L) return -1
         return try {
-            nativeDecodeDav1d(handle, buffer, offset, length, timeUs, isEos)
+            nativeDecodeDav1d(handle, bufferIndex, buffer, offset, length, timeUs, isEos)
         } catch (e: UnsatisfiedLinkError) {
             Log.e(TAG, "dav1d decode call failed", e)
             -1
         }
     }
 
-    fun getDav1dFrameInfo(handle: Long, outInfo: IntArray): Boolean {
+    fun getDav1dFrameInfo(handle: Long, bufferIndex: Int, outInfo: IntArray): Boolean {
         if (!isLibraryLoaded || handle == 0L || outInfo.size < 5) return false
         return try {
-            nativeGetDav1dFrameInfo(handle, outInfo)
+            nativeGetDav1dFrameInfo(handle, bufferIndex, outInfo)
         } catch (e: UnsatisfiedLinkError) {
             Log.e(TAG, "Failed to get dav1d frame info", e)
             false
         }
     }
 
-    fun renderDav1dFrameToSurface(handle: Long, surface: Surface): Boolean {
+    fun getDav1dFramePts(handle: Long, bufferIndex: Int): Long {
+        if (!isLibraryLoaded || handle == 0L) return -1L
+        return try {
+            nativeGetDav1dFramePts(handle, bufferIndex)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to get dav1d frame pts", e)
+            -1L
+        }
+    }
+
+    fun renderDav1dFrameToSurface(handle: Long, bufferIndex: Int, surface: Surface): Boolean {
         if (!isLibraryLoaded || handle == 0L) return false
         return try {
-            nativeRenderDav1dFrameToSurface(handle, surface)
+            nativeRenderDav1dFrameToSurface(handle, bufferIndex, surface)
         } catch (e: UnsatisfiedLinkError) {
             Log.e(TAG, "Failed to render dav1d frame to surface", e)
             false
+        }
+    }
+
+    fun releaseDav1dFrame(handle: Long, bufferIndex: Int) {
+        if (!isLibraryLoaded || handle == 0L) return
+        try {
+            nativeReleaseDav1dFrame(handle, bufferIndex)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to release dav1d frame", e)
         }
     }
 
@@ -361,6 +400,7 @@ class NativeLib {
 
     private external fun nativeDecodeVideo(
         handle: Long,
+        bufferIndex: Int,
         buffer: ByteBuffer?,
         offset: Int,
         length: Int,
@@ -370,13 +410,25 @@ class NativeLib {
 
     private external fun nativeGetVideoFrameInfo(
         handle: Long,
+        bufferIndex: Int,
         outInfo: IntArray
     ): Boolean
 
+    private external fun nativeGetVideoFramePts(
+        handle: Long,
+        bufferIndex: Int
+    ): Long
+
     private external fun nativeRenderVideoFrameToSurface(
         handle: Long,
+        bufferIndex: Int,
         surface: Surface
     ): Boolean
+
+    private external fun nativeReleaseVideoFrame(
+        handle: Long,
+        bufferIndex: Int
+    )
 
     private external fun nativeFlushVideoDecoder(handle: Long)
     private external fun nativeReleaseVideoDecoder(handle: Long)
@@ -385,14 +437,32 @@ class NativeLib {
     private external fun nativeCreateDav1dDecoder(width: Int, height: Int, nThreads: Int): Long
     private external fun nativeDecodeDav1d(
         handle: Long,
+        bufferIndex: Int,
         buffer: ByteBuffer?,
         offset: Int,
         length: Int,
         timeUs: Long,
         isEos: Boolean
     ): Int
-    private external fun nativeGetDav1dFrameInfo(handle: Long, outInfo: IntArray): Boolean
-    private external fun nativeRenderDav1dFrameToSurface(handle: Long, surface: Surface): Boolean
+    private external fun nativeGetDav1dFrameInfo(
+        handle: Long,
+        bufferIndex: Int,
+        outInfo: IntArray
+    ): Boolean
+
+    private external fun nativeGetDav1dFramePts(
+        handle: Long,
+        bufferIndex: Int
+    ): Long
+    private external fun nativeRenderDav1dFrameToSurface(
+        handle: Long,
+        bufferIndex: Int,
+        surface: Surface
+    ): Boolean
+    private external fun nativeReleaseDav1dFrame(
+        handle: Long,
+        bufferIndex: Int
+    )
     private external fun nativeFlushDav1dDecoder(handle: Long)
     private external fun nativeReleaseDav1dDecoder(handle: Long)
 
