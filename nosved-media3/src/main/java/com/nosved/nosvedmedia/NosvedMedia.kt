@@ -5,6 +5,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.nosved.native_codecs.NativeLib
 import com.nosved.nosvedmedia.media3.CodecCapabilities
+import com.nosved.nosvedmedia.media3.DecoderPreferences
 import com.nosved.nosvedmedia.media3.DecoderSelectionListener
 import com.nosved.nosvedmedia.media3.FFmpegRenderersFactory
 import com.nosved.nosvedmedia.media3.PlaybackDiagnosticsListener
@@ -85,11 +86,11 @@ object NosvedMedia {
     }
 
     /**
-     * Creates an [FFmpegRenderersFactory] configured with NosvedMedia software decoders.
+     * Creates an [FFmpegRenderersFactory] configured with independent [DecoderPreferences].
      */
     fun createRenderersFactory(
         context: Context,
-        softwareDecoderPriority: SoftwareDecoderPriority = SoftwareDecoderPriority.FALLBACK,
+        preferences: DecoderPreferences = DecoderPreferences.DEFAULT,
         decoderConfig: VideoDecoderConfig = VideoDecoderConfig(),
         selectionListener: DecoderSelectionListener? = null,
         diagnosticsListener: PlaybackDiagnosticsListener? = null
@@ -97,7 +98,26 @@ object NosvedMedia {
         initialize(context)
         return FFmpegRenderersFactory(
             context = context,
-            softwareDecoderPriority = softwareDecoderPriority,
+            preferences = preferences,
+            decoderConfig = decoderConfig,
+            selectionListener = selectionListener,
+            diagnosticsListener = diagnosticsListener
+        )
+    }
+
+    /**
+     * Legacy overload: creates an [FFmpegRenderersFactory] configured with [SoftwareDecoderPriority].
+     */
+    fun createRenderersFactory(
+        context: Context,
+        softwareDecoderPriority: SoftwareDecoderPriority,
+        decoderConfig: VideoDecoderConfig = VideoDecoderConfig(),
+        selectionListener: DecoderSelectionListener? = null,
+        diagnosticsListener: PlaybackDiagnosticsListener? = null
+    ): FFmpegRenderersFactory {
+        return createRenderersFactory(
+            context = context,
+            preferences = DecoderPreferences.fromSoftwareDecoderPriority(softwareDecoderPriority),
             decoderConfig = decoderConfig,
             selectionListener = selectionListener,
             diagnosticsListener = diagnosticsListener
@@ -106,18 +126,18 @@ object NosvedMedia {
 
     /**
      * Convenience factory method to construct a fully configured [ExoPlayer] instance
-     * utilizing NosvedMedia renderers.
+     * utilizing NosvedMedia renderers and [DecoderPreferences].
      */
     fun createPlayer(
         context: Context,
-        softwareDecoderPriority: SoftwareDecoderPriority = SoftwareDecoderPriority.FALLBACK,
+        preferences: DecoderPreferences = DecoderPreferences.DEFAULT,
         decoderConfig: VideoDecoderConfig = VideoDecoderConfig(),
         selectionListener: DecoderSelectionListener? = null,
         diagnosticsListener: PlaybackDiagnosticsListener? = null
     ): ExoPlayer {
         val renderersFactory = createRenderersFactory(
             context = context,
-            softwareDecoderPriority = softwareDecoderPriority,
+            preferences = preferences,
             decoderConfig = decoderConfig,
             selectionListener = selectionListener,
             diagnosticsListener = diagnosticsListener
@@ -126,5 +146,23 @@ object NosvedMedia {
             .setRenderersFactory(renderersFactory)
             .build()
     }
-}
 
+    /**
+     * Legacy overload: constructs [ExoPlayer] instance with [SoftwareDecoderPriority].
+     */
+    fun createPlayer(
+        context: Context,
+        softwareDecoderPriority: SoftwareDecoderPriority,
+        decoderConfig: VideoDecoderConfig = VideoDecoderConfig(),
+        selectionListener: DecoderSelectionListener? = null,
+        diagnosticsListener: PlaybackDiagnosticsListener? = null
+    ): ExoPlayer {
+        return createPlayer(
+            context = context,
+            preferences = DecoderPreferences.fromSoftwareDecoderPriority(softwareDecoderPriority),
+            decoderConfig = decoderConfig,
+            selectionListener = selectionListener,
+            diagnosticsListener = diagnosticsListener
+        )
+    }
+}

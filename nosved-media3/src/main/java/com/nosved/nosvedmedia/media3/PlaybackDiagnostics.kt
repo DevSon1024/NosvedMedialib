@@ -39,5 +39,9 @@ interface PlaybackDiagnosticsListener {
     fun onDecoderInitialized(diagnostics: DecoderDiagnostics) {}
     fun onPerformanceMetricsUpdated(metrics: DecodingPerformanceMetrics) {}
     fun onDecodingError(error: DecodingError) {}
-}
 
+    // Lifecycle and state callbacks
+    fun onDecoderStateChanged(status: TrackDecoderStatus) {}
+    fun onFirstFrameRendered(trackType: TrackType, decoderEngine: String, ptsUs: Long) {}
+    fun onStructuredError(error: StructuredPlaybackError) {}
+}

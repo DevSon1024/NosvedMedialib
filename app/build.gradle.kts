@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace = "com.nosved.nosvedmedia"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.nosved.nosvedmedia"
