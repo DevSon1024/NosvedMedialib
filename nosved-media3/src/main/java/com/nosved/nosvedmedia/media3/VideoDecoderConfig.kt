@@ -8,6 +8,7 @@ data class VideoDecoderConfig(
     val numOutputBuffers: Int = 12,
     val initialInputBufferSize: Int = 1024 * 1024,
     val maxOutputWidth: Int = 3840,
-    val maxOutputHeight: Int = 2160
+    val maxOutputHeight: Int = 2160,
+    val threadCount: Int = 0
 )
 

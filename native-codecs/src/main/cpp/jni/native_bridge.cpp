@@ -140,7 +140,7 @@ Java_com_nosved_native_1codecs_NativeLib_nativeCreateVideoDecoder(
         return 0L;
     }
 
-    bool ok = decoder->open(mimeType, extraDataPtr, extraDataSize, width, height);
+    bool ok = decoder->open(mimeType, extraDataPtr, extraDataSize, width, height, 0);
 
     if (byteElements) {
         env->ReleaseByteArrayElements(jExtraData, byteElements, JNI_ABORT);
@@ -152,6 +152,124 @@ Java_com_nosved_native_1codecs_NativeLib_nativeCreateVideoDecoder(
     }
 
     return reinterpret_cast<jlong>(decoder);
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeCreateVideoDecoderConfigured(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring jMimeType,
+        jbyteArray jExtraData,
+        jint width,
+        jint height,
+        jint threadCount) {
+    if (!jMimeType) return 0L;
+
+    const char* mimeChars = env->GetStringUTFChars(jMimeType, nullptr);
+    if (!mimeChars) return 0L;
+    std::string mimeType(mimeChars);
+    env->ReleaseStringUTFChars(jMimeType, mimeChars);
+
+    uint8_t* extraDataPtr = nullptr;
+    int extraDataSize = 0;
+    jbyte* byteElements = nullptr;
+
+    if (jExtraData) {
+        extraDataSize = env->GetArrayLength(jExtraData);
+        if (extraDataSize > 0) {
+            byteElements = env->GetByteArrayElements(jExtraData, nullptr);
+            extraDataPtr = reinterpret_cast<uint8_t*>(byteElements);
+        }
+    }
+
+    auto* decoder = new (std::nothrow) nosved::FfmpegVideoDecoder();
+    if (!decoder) {
+        if (byteElements) env->ReleaseByteArrayElements(jExtraData, byteElements, JNI_ABORT);
+        return 0L;
+    }
+
+    bool ok = decoder->open(mimeType, extraDataPtr, extraDataSize, width, height, threadCount);
+
+    if (byteElements) {
+        env->ReleaseByteArrayElements(jExtraData, byteElements, JNI_ABORT);
+    }
+
+    if (!ok) {
+        delete decoder;
+        return 0L;
+    }
+
+    return reinterpret_cast<jlong>(decoder);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeSendVideoPacket(
+        JNIEnv* env,
+        jobject /* this */,
+        jlong handle,
+        jobject jByteBuffer,
+        jint offset,
+        jint length,
+        jlong ptsUs,
+        jlong dtsUs) {
+    if (handle == 0L) return nosved::DECODE_ERROR_INVALID_STATE;
+    auto* decoder = reinterpret_cast<nosved::FfmpegVideoDecoder*>(handle);
+
+    const uint8_t* data = nullptr;
+    if (jByteBuffer && length > 0) {
+        auto* directAddress = static_cast<uint8_t*>(env->GetDirectBufferAddress(jByteBuffer));
+        if (directAddress) {
+            data = directAddress + offset;
+        }
+    }
+
+    return decoder->sendPacket(data, length, ptsUs, dtsUs);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeSendVideoEos(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle) {
+    if (handle == 0L) return nosved::DECODE_ERROR_INVALID_STATE;
+    auto* decoder = reinterpret_cast<nosved::FfmpegVideoDecoder*>(handle);
+    return decoder->sendEos();
+}
+
+JNIEXPORT jint JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeReceiveVideoFrame(
+        JNIEnv* env,
+        jobject /* this */,
+        jlong handle,
+        jintArray jOutInfo) {
+    if (handle == 0L || !jOutInfo) return nosved::DECODE_ERROR_INVALID_STATE;
+    auto* decoder = reinterpret_cast<nosved::FfmpegVideoDecoder*>(handle);
+
+    int slotIndex = -1;
+    nosved::VideoFrameInfo info;
+    int res = decoder->receiveFrame(slotIndex, &info);
+    if (res == nosved::DECODE_OK) {
+        jint temp[5] = {
+            slotIndex,
+            info.width,
+            info.height,
+            info.isKeyFrame ? 1 : 0,
+            info.format
+        };
+        env->SetIntArrayRegion(jOutInfo, 0, 5, temp);
+    }
+    return res;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeGetVideoLastErrorMessage(
+        JNIEnv* env,
+        jobject /* this */,
+        jlong handle) {
+    if (handle == 0L) return env->NewStringUTF("Decoder handle is null");
+    auto* decoder = reinterpret_cast<nosved::FfmpegVideoDecoder*>(handle);
+    std::string msg = decoder->getLastErrorMessage();
+    return env->NewStringUTF(msg.c_str());
 }
 
 JNIEXPORT jint JNICALL

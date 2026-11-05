@@ -110,13 +110,70 @@ class NativeLib {
         }
     }
 
-    fun createVideoDecoder(mimeType: String, extraData: ByteArray?, width: Int, height: Int): Long {
+    fun createVideoDecoder(
+        mimeType: String,
+        extraData: ByteArray?,
+        width: Int,
+        height: Int,
+        threadCount: Int = 0
+    ): Long {
         if (!isLibraryLoaded) return 0L
         return try {
-            nativeCreateVideoDecoder(mimeType, extraData, width, height)
+            if (threadCount > 0) {
+                nativeCreateVideoDecoderConfigured(mimeType, extraData, width, height, threadCount)
+            } else {
+                nativeCreateVideoDecoder(mimeType, extraData, width, height)
+            }
         } catch (e: UnsatisfiedLinkError) {
             Log.e(TAG, "Failed to create video decoder for $mimeType", e)
             0L
+        }
+    }
+
+    fun sendVideoPacket(
+        handle: Long,
+        buffer: ByteBuffer?,
+        offset: Int,
+        length: Int,
+        ptsUs: Long,
+        dtsUs: Long
+    ): Int {
+        if (!isLibraryLoaded || handle == 0L) return -1
+        return try {
+            nativeSendVideoPacket(handle, buffer, offset, length, ptsUs, dtsUs)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to send video packet", e)
+            -1
+        }
+    }
+
+    fun sendVideoEos(handle: Long): Int {
+        if (!isLibraryLoaded || handle == 0L) return -1
+        return try {
+            nativeSendVideoEos(handle)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to send video EOS", e)
+            -1
+        }
+    }
+
+    fun receiveVideoFrame(handle: Long, outInfo: IntArray): Int {
+        if (!isLibraryLoaded || handle == 0L || outInfo.size < 5) return -1
+        return try {
+            nativeReceiveVideoFrame(handle, outInfo)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to receive video frame", e)
+            -1
+        }
+    }
+
+    fun getVideoLastErrorMessage(handle: Long): String {
+        if (!isLibraryLoaded || handle == 0L) return "Native library not loaded or null handle"
+        return try {
+            nativeGetVideoLastErrorMessage(handle)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to get video last error message", e)
+            "Unknown native error"
         }
     }
 
@@ -397,6 +454,32 @@ class NativeLib {
         width: Int,
         height: Int
     ): Long
+
+    private external fun nativeCreateVideoDecoderConfigured(
+        mimeType: String,
+        extraData: ByteArray?,
+        width: Int,
+        height: Int,
+        threadCount: Int
+    ): Long
+
+    private external fun nativeSendVideoPacket(
+        handle: Long,
+        buffer: ByteBuffer?,
+        offset: Int,
+        length: Int,
+        ptsUs: Long,
+        dtsUs: Long
+    ): Int
+
+    private external fun nativeSendVideoEos(handle: Long): Int
+
+    private external fun nativeReceiveVideoFrame(
+        handle: Long,
+        outInfo: IntArray
+    ): Int
+
+    private external fun nativeGetVideoLastErrorMessage(handle: Long): String
 
     private external fun nativeDecodeVideo(
         handle: Long,
