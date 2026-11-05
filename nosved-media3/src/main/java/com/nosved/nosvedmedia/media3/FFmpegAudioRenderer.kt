@@ -54,19 +54,41 @@ class FFmpegAudioRenderer(
         if (format.cryptoType != C.CRYPTO_TYPE_NONE) {
             return C.FORMAT_UNSUPPORTED_DRM
         }
-        val rawFormat = Format.Builder()
-            .setSampleMimeType(MimeTypes.AUDIO_RAW)
-            .setChannelCount(if (format.channelCount != Format.NO_VALUE) format.channelCount else 2)
-            .setSampleRate(if (format.sampleRate != Format.NO_VALUE) format.sampleRate else 48000)
-            .setPcmEncoding(C.ENCODING_PCM_16BIT)
-            .build()
-        if (!sinkSupportsFormat(rawFormat)) {
-            val stereoRawFormat = rawFormat.buildUpon().setChannelCount(2).build()
-            if (!sinkSupportsFormat(stereoRawFormat)) {
-                return C.FORMAT_UNSUPPORTED_SUBTYPE
-            }
-        }
-        return C.FORMAT_HANDLED
+
+        val channelCount = if (format.channelCount != Format.NO_VALUE) format.channelCount else 2
+        val sampleRate = if (format.sampleRate != Format.NO_VALUE) format.sampleRate else 48000
+
+        val canSinkHandle = sinkSupportsFormat(
+            Format.Builder()
+                .setSampleMimeType(MimeTypes.AUDIO_RAW)
+                .setChannelCount(channelCount)
+                .setSampleRate(sampleRate)
+                .setPcmEncoding(C.ENCODING_PCM_16BIT)
+                .build()
+        ) || sinkSupportsFormat(
+            Format.Builder()
+                .setSampleMimeType(MimeTypes.AUDIO_RAW)
+                .setChannelCount(channelCount)
+                .setSampleRate(sampleRate)
+                .setPcmEncoding(C.ENCODING_PCM_FLOAT)
+                .build()
+        ) || sinkSupportsFormat(
+            Format.Builder()
+                .setSampleMimeType(MimeTypes.AUDIO_RAW)
+                .setChannelCount(2)
+                .setSampleRate(sampleRate)
+                .setPcmEncoding(C.ENCODING_PCM_16BIT)
+                .build()
+        ) || sinkSupportsFormat(
+            Format.Builder()
+                .setSampleMimeType(MimeTypes.AUDIO_RAW)
+                .setChannelCount(2)
+                .setSampleRate(sampleRate)
+                .setPcmEncoding(C.ENCODING_PCM_FLOAT)
+                .build()
+        )
+
+        return if (canSinkHandle) C.FORMAT_HANDLED else C.FORMAT_UNSUPPORTED_SUBTYPE
     }
 
     override fun createDecoder(
@@ -104,7 +126,51 @@ class FFmpegAudioRenderer(
             )
         )
 
-        val decoder = FFmpegAudioDecoder(format)
+        val channelCount = if (format.channelCount != Format.NO_VALUE) format.channelCount else 2
+        val sampleRate = if (format.sampleRate != Format.NO_VALUE) format.sampleRate else 48000
+
+        val multiFloatSupported = channelCount > 2 && sinkSupportsFormat(
+            Format.Builder()
+                .setSampleMimeType(MimeTypes.AUDIO_RAW)
+                .setChannelCount(channelCount)
+                .setSampleRate(sampleRate)
+                .setPcmEncoding(C.ENCODING_PCM_FLOAT)
+                .build()
+        )
+
+        val multi16Supported = channelCount > 2 && sinkSupportsFormat(
+            Format.Builder()
+                .setSampleMimeType(MimeTypes.AUDIO_RAW)
+                .setChannelCount(channelCount)
+                .setSampleRate(sampleRate)
+                .setPcmEncoding(C.ENCODING_PCM_16BIT)
+                .build()
+        )
+
+        val stereoFloatSupported = sinkSupportsFormat(
+            Format.Builder()
+                .setSampleMimeType(MimeTypes.AUDIO_RAW)
+                .setChannelCount(2)
+                .setSampleRate(sampleRate)
+                .setPcmEncoding(C.ENCODING_PCM_FLOAT)
+                .build()
+        )
+
+        val (pcmEncoding, channelRouting, maxChannels) = when {
+            multiFloatSupported -> Triple(C.ENCODING_PCM_FLOAT, AudioDecoderConfig.CHANNEL_ROUTING_AUTO, channelCount)
+            multi16Supported -> Triple(C.ENCODING_PCM_16BIT, AudioDecoderConfig.CHANNEL_ROUTING_AUTO, channelCount)
+            stereoFloatSupported && channelCount <= 2 -> Triple(C.ENCODING_PCM_FLOAT, AudioDecoderConfig.CHANNEL_ROUTING_AUTO, 2)
+            channelCount > 2 -> Triple(C.ENCODING_PCM_16BIT, AudioDecoderConfig.CHANNEL_ROUTING_FORCE_STEREO, 2)
+            else -> Triple(C.ENCODING_PCM_16BIT, AudioDecoderConfig.CHANNEL_ROUTING_AUTO, 2)
+        }
+
+        val config = AudioDecoderConfig(
+            pcmEncoding = pcmEncoding,
+            channelRouting = channelRouting,
+            maxOutputChannels = maxChannels
+        )
+
+        val decoder = FFmpegAudioDecoder(format, config, diagnosticsListener)
 
         diagnosticsListener?.onDecoderStateChanged(
             TrackDecoderStatus(
