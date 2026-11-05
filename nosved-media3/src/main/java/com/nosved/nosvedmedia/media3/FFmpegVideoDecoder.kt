@@ -52,7 +52,9 @@ class FFmpegVideoDecoder(
             extraData,
             width,
             height,
-            config.threadCount
+            config.threadCount,
+            config.scalingMode.nativeValue,
+            config.enableHdrToneMapping
         )
 
         if (nativeHandle == 0L) {
@@ -195,7 +197,7 @@ class FFmpegVideoDecoder(
     }
 
     private fun decodeLoop() {
-        val frameInfo = IntArray(5)
+        val frameInfo = IntArray(10)
         while (true) {
             var inputToProcess: DecoderInputBuffer? = null
 

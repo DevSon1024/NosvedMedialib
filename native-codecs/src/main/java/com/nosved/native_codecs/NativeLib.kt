@@ -115,12 +115,22 @@ class NativeLib {
         extraData: ByteArray?,
         width: Int,
         height: Int,
-        threadCount: Int = 0
+        threadCount: Int = 0,
+        scalingMode: Int = 1,
+        enableToneMapping: Boolean = true
     ): Long {
         if (!isLibraryLoaded) return 0L
         return try {
-            if (threadCount > 0) {
-                nativeCreateVideoDecoderConfigured(mimeType, extraData, width, height, threadCount)
+            if (threadCount > 0 || scalingMode != 1 || !enableToneMapping) {
+                nativeCreateVideoDecoderConfigured(
+                    mimeType,
+                    extraData,
+                    width,
+                    height,
+                    threadCount,
+                    scalingMode,
+                    enableToneMapping
+                )
             } else {
                 nativeCreateVideoDecoder(mimeType, extraData, width, height)
             }
@@ -266,10 +276,20 @@ class NativeLib {
         }
     }
 
-    fun createDav1dDecoder(width: Int = 0, height: Int = 0, nThreads: Int = 0): Long {
+    fun createDav1dDecoder(
+        width: Int = 0,
+        height: Int = 0,
+        nThreads: Int = 0,
+        scalingMode: Int = 1,
+        enableToneMapping: Boolean = true
+    ): Long {
         if (!isLibraryLoaded) return 0L
         return try {
-            nativeCreateDav1dDecoder(width, height, nThreads)
+            if (scalingMode != 1 || !enableToneMapping) {
+                nativeCreateDav1dDecoderConfigured(width, height, nThreads, scalingMode, enableToneMapping)
+            } else {
+                nativeCreateDav1dDecoder(width, height, nThreads)
+            }
         } catch (e: UnsatisfiedLinkError) {
             Log.e(TAG, "Failed to create dav1d decoder", e)
             0L
@@ -460,7 +480,9 @@ class NativeLib {
         extraData: ByteArray?,
         width: Int,
         height: Int,
-        threadCount: Int
+        threadCount: Int,
+        scalingMode: Int,
+        enableToneMapping: Boolean
     ): Long
 
     private external fun nativeSendVideoPacket(
@@ -518,6 +540,13 @@ class NativeLib {
 
     private external fun nativeGetDav1dVersion(): String
     private external fun nativeCreateDav1dDecoder(width: Int, height: Int, nThreads: Int): Long
+    private external fun nativeCreateDav1dDecoderConfigured(
+        width: Int,
+        height: Int,
+        nThreads: Int,
+        scalingMode: Int,
+        enableToneMapping: Boolean
+    ): Long
     private external fun nativeDecodeDav1d(
         handle: Long,
         bufferIndex: Int,
