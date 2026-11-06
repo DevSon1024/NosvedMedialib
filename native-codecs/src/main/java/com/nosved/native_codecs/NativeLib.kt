@@ -384,12 +384,93 @@ class NativeLib {
     }
 
     fun createAudioDecoder(mimeType: String, extraData: ByteArray?, sampleRate: Int, channelCount: Int): Long {
+        return createAudioDecoderConfigured(mimeType, extraData, sampleRate, channelCount, 2, 0, 8)
+    }
+
+    fun createAudioDecoderConfigured(
+        mimeType: String,
+        extraData: ByteArray?,
+        sampleRate: Int,
+        channelCount: Int,
+        pcmEncoding: Int = 2,
+        channelRouting: Int = 0,
+        maxOutputChannels: Int = 8
+    ): Long {
         if (!isLibraryLoaded) return 0L
         return try {
-            nativeCreateAudioDecoder(mimeType, extraData, sampleRate, channelCount)
+            nativeCreateAudioDecoderConfigured(
+                mimeType,
+                extraData,
+                sampleRate,
+                channelCount,
+                pcmEncoding,
+                channelRouting,
+                maxOutputChannels
+            )
         } catch (e: UnsatisfiedLinkError) {
             Log.e(TAG, "Failed to create audio decoder for $mimeType", e)
             0L
+        }
+    }
+
+    fun sendAudioPacket(
+        handle: Long,
+        buffer: ByteBuffer?,
+        offset: Int,
+        length: Int,
+        ptsUs: Long
+    ): Int {
+        if (!isLibraryLoaded || handle == 0L) return -1
+        return try {
+            nativeSendAudioPacket(handle, buffer, offset, length, ptsUs)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to send audio packet", e)
+            -1
+        }
+    }
+
+    fun sendAudioEos(handle: Long): Int {
+        if (!isLibraryLoaded || handle == 0L) return -1
+        return try {
+            nativeSendAudioEos(handle)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to send audio EOS", e)
+            -1
+        }
+    }
+
+    fun receiveAudioPcm(
+        handle: Long,
+        outBuffer: ByteBuffer,
+        outCapacity: Int,
+        outPtsUs: LongArray? = null
+    ): Int {
+        if (!isLibraryLoaded || handle == 0L) return -1
+        return try {
+            nativeReceiveAudioPcm(handle, outBuffer, outCapacity, outPtsUs)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to receive audio PCM", e)
+            -1
+        }
+    }
+
+    fun getAudioPcmEncoding(handle: Long): Int {
+        if (!isLibraryLoaded || handle == 0L) return 2
+        return try {
+            nativeGetAudioPcmEncoding(handle)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to get audio PCM encoding", e)
+            2
+        }
+    }
+
+    fun getAudioLastErrorMessage(handle: Long): String {
+        if (!isLibraryLoaded || handle == 0L) return ""
+        return try {
+            nativeGetAudioLastErrorMessage(handle)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to get audio last error message", e)
+            ""
         }
     }
 
@@ -455,6 +536,31 @@ class NativeLib {
         sampleRate: Int,
         channelCount: Int
     ): Long
+    private external fun nativeCreateAudioDecoderConfigured(
+        mimeType: String,
+        extraData: ByteArray?,
+        sampleRate: Int,
+        channelCount: Int,
+        pcmEncoding: Int,
+        channelRouting: Int,
+        maxOutputChannels: Int
+    ): Long
+    private external fun nativeSendAudioPacket(
+        handle: Long,
+        buffer: ByteBuffer?,
+        offset: Int,
+        length: Int,
+        ptsUs: Long
+    ): Int
+    private external fun nativeSendAudioEos(handle: Long): Int
+    private external fun nativeReceiveAudioPcm(
+        handle: Long,
+        outBuffer: ByteBuffer,
+        outCapacity: Int,
+        outPtsUs: LongArray?
+    ): Int
+    private external fun nativeGetAudioPcmEncoding(handle: Long): Int
+    private external fun nativeGetAudioLastErrorMessage(handle: Long): String
     private external fun nativeDecodeAudio(
         handle: Long,
         buffer: ByteBuffer?,

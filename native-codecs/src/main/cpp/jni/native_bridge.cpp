@@ -600,13 +600,16 @@ Java_com_nosved_native_1codecs_NativeLib_nativeIsAudioMimeTypeSupported(
 }
 
 JNIEXPORT jlong JNICALL
-Java_com_nosved_native_1codecs_NativeLib_nativeCreateAudioDecoder(
+Java_com_nosved_native_1codecs_NativeLib_nativeCreateAudioDecoderConfigured(
         JNIEnv* env,
         jobject /* this */,
         jstring jMimeType,
         jbyteArray jExtraData,
         jint sampleRate,
-        jint channelCount) {
+        jint channelCount,
+        jint pcmEncoding,
+        jint channelRouting,
+        jint maxOutputChannels) {
     if (!jMimeType) return 0L;
     const char* chars = env->GetStringUTFChars(jMimeType, nullptr);
     if (!chars) return 0L;
@@ -631,7 +634,8 @@ Java_com_nosved_native_1codecs_NativeLib_nativeCreateAudioDecoder(
         return 0L;
     }
 
-    bool ok = decoder->open(mime, extraDataPtr, extraDataSize, sampleRate, channelCount);
+    bool ok = decoder->open(mime, extraDataPtr, extraDataSize, sampleRate, channelCount,
+                            pcmEncoding, channelRouting, maxOutputChannels);
     if (byteElements) {
         env->ReleaseByteArrayElements(jExtraData, byteElements, JNI_ABORT);
     }
@@ -642,6 +646,100 @@ Java_com_nosved_native_1codecs_NativeLib_nativeCreateAudioDecoder(
     }
 
     return reinterpret_cast<jlong>(decoder);
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeCreateAudioDecoder(
+        JNIEnv* env,
+        jobject thiz,
+        jstring jMimeType,
+        jbyteArray jExtraData,
+        jint sampleRate,
+        jint channelCount) {
+    return Java_com_nosved_native_1codecs_NativeLib_nativeCreateAudioDecoderConfigured(
+            env, thiz, jMimeType, jExtraData, sampleRate, channelCount, 2, 0, 8);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeSendAudioPacket(
+        JNIEnv* env,
+        jobject /* this */,
+        jlong handle,
+        jobject jInputBuffer,
+        jint offset,
+        jint length,
+        jlong ptsUs) {
+    if (handle == 0L) return -1;
+    auto* decoder = reinterpret_cast<nosved::FfmpegAudioDecoder*>(handle);
+
+    const uint8_t* inData = nullptr;
+    if (jInputBuffer && length > 0) {
+        auto* directAddress = static_cast<uint8_t*>(env->GetDirectBufferAddress(jInputBuffer));
+        if (directAddress) {
+            inData = directAddress + offset;
+        }
+    }
+
+    return decoder->sendPacket(inData, length, ptsUs);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeSendAudioEos(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle) {
+    if (handle == 0L) return -1;
+    auto* decoder = reinterpret_cast<nosved::FfmpegAudioDecoder*>(handle);
+    return decoder->sendEos();
+}
+
+JNIEXPORT jint JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeReceiveAudioPcm(
+        JNIEnv* env,
+        jobject /* this */,
+        jlong handle,
+        jobject jOutputBuffer,
+        jint outCapacity,
+        jlongArray jOutPtsUs) {
+    if (handle == 0L || !jOutputBuffer || outCapacity <= 0) return -1;
+    auto* decoder = reinterpret_cast<nosved::FfmpegAudioDecoder*>(handle);
+
+    auto* outAddress = static_cast<uint8_t*>(env->GetDirectBufferAddress(jOutputBuffer));
+    if (!outAddress) {
+        LOGE("Direct buffer address for audio output buffer is null");
+        return -1;
+    }
+
+    int64_t pts = -1;
+    int bytesRead = decoder->receivePcm(outAddress, outCapacity, &pts);
+
+    if (jOutPtsUs && env->GetArrayLength(jOutPtsUs) > 0) {
+        jlong ptsVal = static_cast<jlong>(pts);
+        env->SetLongArrayRegion(jOutPtsUs, 0, 1, &ptsVal);
+    }
+
+    return bytesRead;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeGetAudioPcmEncoding(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jlong handle) {
+    if (handle == 0L) return 2;
+    auto* decoder = reinterpret_cast<nosved::FfmpegAudioDecoder*>(handle);
+    return decoder->getPcmEncoding();
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeGetAudioLastErrorMessage(
+        JNIEnv* env,
+        jobject /* this */,
+        jlong handle) {
+    if (handle == 0L) return env->NewStringUTF("");
+    auto* decoder = reinterpret_cast<nosved::FfmpegAudioDecoder*>(handle);
+    std::string msg = decoder->getLastErrorMessage();
+    return env->NewStringUTF(msg.c_str());
 }
 
 JNIEXPORT jint JNICALL

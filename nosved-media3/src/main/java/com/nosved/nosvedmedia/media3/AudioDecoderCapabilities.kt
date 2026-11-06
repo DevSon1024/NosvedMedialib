@@ -15,22 +15,34 @@ object AudioDecoderCapabilities {
         MimeTypes.AUDIO_E_AC3,
         MimeTypes.AUDIO_E_AC3_JOC,
         MimeTypes.AUDIO_AC3,
+        MimeTypes.AUDIO_AC4,
         MimeTypes.AUDIO_TRUEHD,
+        "audio/true-hd",
+        "audio/mlp",
         MimeTypes.AUDIO_DTS,
         MimeTypes.AUDIO_DTS_HD,
         MimeTypes.AUDIO_DTS_EXPRESS,
+        "audio/vnd.dts.uhd",
+        "audio/dts",
         MimeTypes.AUDIO_FLAC,
+        "audio/x-flac",
         MimeTypes.AUDIO_ALAC,
         MimeTypes.AUDIO_OPUS,
         MimeTypes.AUDIO_VORBIS,
         MimeTypes.AUDIO_AAC,
         "audio/aac",
+        "audio/mp4a-latm",
         MimeTypes.AUDIO_MPEG,
         MimeTypes.AUDIO_MPEG_L1,
         MimeTypes.AUDIO_MPEG_L2,
+        "audio/mp3",
         MimeTypes.AUDIO_WAV,
+        "audio/x-wav",
+        "audio/raw",
         "audio/x-ms-wma",
-        "audio/wma"
+        "audio/wma",
+        "audio/x-ms-wmapro",
+        "audio/x-ms-wmalossless"
     )
 
     fun isFormatSupported(format: Format): Boolean {
@@ -53,5 +65,9 @@ object AudioDecoderCapabilities {
     fun getSupportedMimeTypes(): List<String> {
         if (!NativeLib.isLibraryLoaded) return emptyList()
         return VERIFIED_MIME_TYPES.filter { nativeLib.isAudioMimeTypeSupported(it) }
+    }
+
+    fun isPcmEncodingSupported(encoding: Int): Boolean {
+        return encoding == C.ENCODING_PCM_16BIT || encoding == C.ENCODING_PCM_FLOAT
     }
 }
