@@ -23,60 +23,65 @@ class PerformanceMonitor(
     private var audioLatencyMs = 0.0
     private var currentThermalStatus = ThermalStatus.NONE
     private var activeThreadCount = 0
+    private var lastMetricsEmitTimeNs = 0L
 
     fun recordDecodeTime(durationNs: Long) {
-        val currentMetrics: DecodingPerformanceMetrics
+        var currentMetrics: DecodingPerformanceMetrics? = null
+        val now = System.nanoTime()
         synchronized(lock) {
             totalFramesDecoded++
             totalDecodeTimeNs += durationNs
             minDecodeTimeNs = min(minDecodeTimeNs, durationNs)
             maxDecodeTimeNs = max(maxDecodeTimeNs, durationNs)
 
-            val now = System.nanoTime()
             windowTimestamps[windowIndex] = now
             windowIndex = (windowIndex + 1) % sampleWindowFrames
             if (windowCount < sampleWindowFrames) {
                 windowCount++
             }
 
-            val fps = if (windowCount > 1) {
-                val oldestIdx = if (windowCount < sampleWindowFrames) 0 else windowIndex
-                val elapsedNs = now - windowTimestamps[oldestIdx]
-                if (elapsedNs > 0) {
-                    ((windowCount - 1) * 1_000_000_000.0) / elapsedNs
+            // Throttle telemetry notifications to at most 2 Hz (every 500ms) or first frame
+            if (now - lastMetricsEmitTimeNs >= 500_000_000L || lastMetricsEmitTimeNs == 0L) {
+                lastMetricsEmitTimeNs = now
+                val fps = if (windowCount > 1) {
+                    val oldestIdx = if (windowCount < sampleWindowFrames) 0 else windowIndex
+                    val elapsedNs = now - windowTimestamps[oldestIdx]
+                    if (elapsedNs > 0) {
+                        ((windowCount - 1) * 1_000_000_000.0) / elapsedNs
+                    } else {
+                        0.0
+                    }
                 } else {
                     0.0
                 }
-            } else {
-                0.0
+
+                val avgMs = if (totalFramesDecoded > 0) {
+                    (totalDecodeTimeNs / 1_000_000.0) / totalFramesDecoded
+                } else {
+                    0.0
+                }
+
+                val minMs = if (minDecodeTimeNs != Long.MAX_VALUE) minDecodeTimeNs / 1_000_000.0 else 0.0
+                val maxMs = maxDecodeTimeNs / 1_000_000.0
+                val memMb = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024.0 * 1024.0)
+
+                currentMetrics = DecodingPerformanceMetrics(
+                    totalFramesDecoded = totalFramesDecoded,
+                    totalFramesDropped = totalFramesDropped,
+                    totalDecodeTimeMs = totalDecodeTimeNs / 1_000_000.0,
+                    averageDecodeTimeMs = avgMs,
+                    maxDecodeTimeMs = maxMs,
+                    minDecodeTimeMs = minMs,
+                    currentFps = fps,
+                    memoryUsageMb = memMb,
+                    audioProcessingLatencyMs = audioLatencyMs,
+                    thermalStatus = currentThermalStatus,
+                    activeThreadCount = activeThreadCount
+                )
             }
-
-            val avgMs = if (totalFramesDecoded > 0) {
-                (totalDecodeTimeNs / 1_000_000.0) / totalFramesDecoded
-            } else {
-                0.0
-            }
-
-            val minMs = if (minDecodeTimeNs != Long.MAX_VALUE) minDecodeTimeNs / 1_000_000.0 else 0.0
-            val maxMs = maxDecodeTimeNs / 1_000_000.0
-            val memMb = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024.0 * 1024.0)
-
-            currentMetrics = DecodingPerformanceMetrics(
-                totalFramesDecoded = totalFramesDecoded,
-                totalFramesDropped = totalFramesDropped,
-                totalDecodeTimeMs = totalDecodeTimeNs / 1_000_000.0,
-                averageDecodeTimeMs = avgMs,
-                maxDecodeTimeMs = maxMs,
-                minDecodeTimeMs = minMs,
-                currentFps = fps,
-                memoryUsageMb = memMb,
-                audioProcessingLatencyMs = audioLatencyMs,
-                thermalStatus = currentThermalStatus,
-                activeThreadCount = activeThreadCount
-            )
         }
 
-        listener?.onPerformanceMetricsUpdated(currentMetrics)
+        currentMetrics?.let { listener?.onPerformanceMetricsUpdated(it) }
     }
 
     fun recordDroppedFrame() {

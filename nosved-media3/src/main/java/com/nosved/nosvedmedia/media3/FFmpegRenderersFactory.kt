@@ -185,6 +185,10 @@ open class FFmpegRenderersFactory(
                 )
             }
             DecoderPreference.PLATFORM_PREFERRED -> {
+                val hasHwAv1 = CodecCapabilities.getHardwareDecoderAvailability(MimeTypes.VIDEO_AV1)
+                if (!hasHwAv1 && allowFallback) {
+                    out.add(dav1dRenderer)
+                }
                 super.buildVideoRenderers(
                     context,
                     extensionRendererMode,
@@ -196,7 +200,9 @@ open class FFmpegRenderersFactory(
                     out
                 )
                 if (allowFallback) {
-                    out.add(dav1dRenderer)
+                    if (hasHwAv1) {
+                        out.add(dav1dRenderer)
+                    }
                     out.add(ffmpegRenderer)
                 }
             }
