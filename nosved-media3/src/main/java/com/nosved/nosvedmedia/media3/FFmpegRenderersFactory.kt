@@ -21,6 +21,9 @@ open class FFmpegRenderersFactory(
 ) : DefaultRenderersFactory(context) {
 
     private var preferencesExplicit: Boolean = false
+    private var thermalMonitor: ThermalThrottlingMonitor? = null
+
+    fun getThermalStatus(): ThermalStatus = thermalMonitor?.currentStatus ?: ThermalStatus.NONE
 
     constructor(
         context: Context,
@@ -104,11 +107,24 @@ open class FFmpegRenderersFactory(
         allowedVideoJoiningTimeMs: Long,
         out: ArrayList<Renderer>
     ) {
+        if (thermalMonitor == null) {
+            val monitor = ThermalThrottlingMonitor(context, diagnosticsListener, decoderConfig.thermalMitigationPolicy)
+            monitor.start()
+            thermalMonitor = monitor
+        }
+
+        val effectiveConfig = if (thermalMonitor != null) {
+            val recScaling = thermalMonitor?.getRecommendedScalingMode(decoderConfig.scalingMode) ?: decoderConfig.scalingMode
+            decoderConfig.copy(scalingMode = recScaling)
+        } else {
+            decoderConfig
+        }
+
         val dav1dRenderer = Dav1dVideoRenderer(
             allowedJoiningTimeMs = allowedVideoJoiningTimeMs,
             eventHandler = eventHandler,
             eventListener = eventListener,
-            config = decoderConfig,
+            config = effectiveConfig,
             selectionListener = selectionListener,
             diagnosticsListener = diagnosticsListener
         )
@@ -116,7 +132,7 @@ open class FFmpegRenderersFactory(
             allowedJoiningTimeMs = allowedVideoJoiningTimeMs,
             eventHandler = eventHandler,
             eventListener = eventListener,
-            config = decoderConfig,
+            config = effectiveConfig,
             selectionListener = selectionListener,
             diagnosticsListener = diagnosticsListener
         )

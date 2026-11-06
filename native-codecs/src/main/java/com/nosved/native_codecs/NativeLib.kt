@@ -117,17 +117,19 @@ class NativeLib {
         height: Int,
         threadCount: Int = 0,
         scalingMode: Int = 1,
-        enableToneMapping: Boolean = true
+        enableToneMapping: Boolean = true,
+        threadType: Int = 0
     ): Long {
         if (!isLibraryLoaded) return 0L
         return try {
-            if (threadCount > 0 || scalingMode != 1 || !enableToneMapping) {
+            if (threadCount > 0 || scalingMode != 1 || !enableToneMapping || threadType != 0) {
                 nativeCreateVideoDecoderConfigured(
                     mimeType,
                     extraData,
                     width,
                     height,
                     threadCount,
+                    threadType,
                     scalingMode,
                     enableToneMapping
                 )
@@ -587,6 +589,7 @@ class NativeLib {
         width: Int,
         height: Int,
         threadCount: Int,
+        threadType: Int,
         scalingMode: Int,
         enableToneMapping: Boolean
     ): Long

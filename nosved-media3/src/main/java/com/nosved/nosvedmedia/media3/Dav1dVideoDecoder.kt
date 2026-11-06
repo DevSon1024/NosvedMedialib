@@ -45,10 +45,21 @@ class Dav1dVideoDecoder(
         val width = if (format.width != Format.NO_VALUE) format.width else 0
         val height = if (format.height != Format.NO_VALUE) format.height else 0
 
+        val threading = if (config.threadCount > 0) {
+            ThreadingConfig(config.threadCount, config.threadType)
+        } else {
+            AdaptiveThreadingPolicy.determineThreading(
+                MimeTypes.VIDEO_AV1,
+                width,
+                height,
+                config.threadPolicy
+            )
+        }
+
         nativeHandle = nativeLib.createDav1dDecoder(
             width,
             height,
-            config.threadCount,
+            threading.threadCount,
             config.scalingMode.nativeValue,
             config.enableHdrToneMapping
         )

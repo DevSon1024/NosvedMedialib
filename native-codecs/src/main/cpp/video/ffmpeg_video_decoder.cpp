@@ -203,6 +203,7 @@ bool FfmpegVideoDecoder::open(
     int width,
     int height,
     int threadCount,
+    int threadType,
     VideoScalingMode scalingMode,
     bool enableToneMapping
 ) {
@@ -254,14 +255,34 @@ bool FfmpegVideoDecoder::open(
     codecContext_->pkt_timebase = {1, 1000000};
     codecContext_->time_base = {1, 1000000};
 
-    // Multi-threaded decoding
+    // Adaptive multi-threaded decoding
+    if (threadType == 1) {
+        codecContext_->thread_type = FF_THREAD_FRAME;
+    } else if (threadType == 2) {
+        codecContext_->thread_type = FF_THREAD_SLICE;
+    } else if (threadType == 3) {
+        codecContext_->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+    } else {
+        // AUTO: For low resolution / 720p prefer slice; for 1080p+ prefer frame or hybrid
+        if (width > 0 && width < 1280 && height > 0 && height < 720) {
+            codecContext_->thread_type = FF_THREAD_SLICE;
+        } else {
+            codecContext_->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+        }
+    }
+
     if (threadCount > 0) {
         codecContext_->thread_count = threadCount;
     } else {
         int cpuCores = static_cast<int>(std::thread::hardware_concurrency());
-        codecContext_->thread_count = (cpuCores > 0) ? std::min(4, std::max(2, cpuCores)) : 4;
+        if (width >= 3840 || height >= 2160) {
+            codecContext_->thread_count = (cpuCores > 0) ? std::min(6, std::max(4, cpuCores - 2)) : 4;
+        } else if (width >= 1920 || height >= 1080) {
+            codecContext_->thread_count = (cpuCores > 0) ? std::min(4, std::max(2, cpuCores / 2)) : 3;
+        } else {
+            codecContext_->thread_count = (cpuCores > 0) ? std::min(2, std::max(1, cpuCores / 4)) : 2;
+        }
     }
-    codecContext_->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
 
     int ret = avcodec_open2(codecContext_, codec, nullptr);
     if (ret < 0) {
@@ -574,20 +595,24 @@ bool FfmpegVideoDecoder::renderToSurface(int slotIndex, ANativeWindow* window) {
     int srcRange = (frame->color_range == AVCOL_RANGE_JPEG) ? 1 : 0;
     int dstRange = 1; // Full range RGB
 
-    const int* invTable = sws_getCoefficients(swsSrcCS);
-    const int* table = sws_getCoefficients(SWS_CS_DEFAULT);
+    if (cachedColorSpace_ != swsSrcCS || cachedColorRange_ != srcRange) {
+        const int* invTable = sws_getCoefficients(swsSrcCS);
+        const int* table = sws_getCoefficients(SWS_CS_DEFAULT);
 
-    if (invTable && table) {
-        sws_setColorspaceDetails(
-            swsContext_,
-            invTable,
-            srcRange,
-            table,
-            dstRange,
-            0,
-            1 << 16,
-            1 << 16
-        );
+        if (invTable && table) {
+            sws_setColorspaceDetails(
+                swsContext_,
+                invTable,
+                srcRange,
+                table,
+                dstRange,
+                0,
+                1 << 16,
+                1 << 16
+            );
+            cachedColorSpace_ = swsSrcCS;
+            cachedColorRange_ = srcRange;
+        }
     }
 
     uint8_t* dstData[4] = { static_cast<uint8_t*>(windowBuffer.bits), nullptr, nullptr, nullptr };
@@ -644,6 +669,8 @@ void FfmpegVideoDecoder::flush() {
             slots_[i].state = SlotState::FREE;
             slots_[i].generation++;
         }
+        cachedColorSpace_ = -1;
+        cachedColorRange_ = -1;
     }
 }
 

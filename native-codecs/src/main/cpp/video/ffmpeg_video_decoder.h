@@ -59,6 +59,7 @@ public:
         int width,
         int height,
         int threadCount = 0,
+        int threadType = 0,
         VideoScalingMode scalingMode = VideoScalingMode::BILINEAR,
         bool enableToneMapping = true
     );

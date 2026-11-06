@@ -47,14 +47,28 @@ class FFmpegVideoDecoder(
         val width = if (format.width != Format.NO_VALUE) format.width else 0
         val height = if (format.height != Format.NO_VALUE) format.height else 0
 
+        val threading = if (config.threadCount > 0) {
+            ThreadingConfig(config.threadCount, config.threadType)
+        } else {
+            AdaptiveThreadingPolicy.determineThreading(
+                mimeType,
+                width,
+                height,
+                config.threadPolicy
+            )
+        }
+
+        performanceMonitor?.setActiveThreadCount(threading.threadCount)
+
         nativeHandle = nativeLib.createVideoDecoder(
-            mimeType,
-            extraData,
-            width,
-            height,
-            config.threadCount,
-            config.scalingMode.nativeValue,
-            config.enableHdrToneMapping
+            mimeType = mimeType,
+            extraData = extraData,
+            width = width,
+            height = height,
+            threadCount = threading.threadCount,
+            scalingMode = config.scalingMode.nativeValue,
+            enableToneMapping = config.enableHdrToneMapping,
+            threadType = threading.threadType
         )
 
         if (nativeHandle == 0L) {
