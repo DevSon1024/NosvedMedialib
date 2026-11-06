@@ -20,7 +20,7 @@ object CodecCapabilities {
         val supportedOutputFormats: List<String>
     )
 
-    private val nativeLib = NativeLib()
+    private val nativeLib by lazy { NativeLib() }
 
     fun getHardwareDecoderAvailability(mimeType: String): Boolean {
         return try {
@@ -46,63 +46,63 @@ object CodecCapabilities {
 
         return when (mimeType) {
             MimeTypes.VIDEO_AV1 -> {
-                val dav1dVer = nativeLib.getDav1dVersion()
+                val dav1dVer = if (hasSw) nativeLib.getDav1dVersion() else "unavailable"
                 CodecReport(
                     mimeType = mimeType,
                     isHardwareAccelerated = hasHw,
                     isSoftwareFallbackAvailable = hasSw,
                     softwareEngine = if (hasSw) "dav1d $dav1dVer" else null,
-                    supportedProfiles = listOf("Main (Profile 0)", "High (Profile 1)", "Professional (Profile 2)"),
-                    supportedBitDepths = listOf(8, 10),
-                    supportedOutputFormats = listOf("YUV420P", "YUV420P10LE", "RGBA_8888")
+                    supportedProfiles = if (hasSw) listOf("Main (Profile 0)") else emptyList(),
+                    supportedBitDepths = if (hasSw) listOf(8, 10) else emptyList(),
+                    supportedOutputFormats = if (hasSw) listOf("YUV420P", "YUV420P10LE", "RGBA_8888") else emptyList()
                 )
             }
             MimeTypes.VIDEO_H264 -> {
-                val ffmpegVer = nativeLib.getFFmpegVersion()
+                val ffmpegVer = if (hasSw) nativeLib.getFFmpegVersion() else "unavailable"
                 CodecReport(
                     mimeType = mimeType,
                     isHardwareAccelerated = hasHw,
                     isSoftwareFallbackAvailable = hasSw,
                     softwareEngine = if (hasSw) "FFmpeg $ffmpegVer" else null,
-                    supportedProfiles = listOf("Baseline", "Main", "Extended", "High", "High 10"),
-                    supportedBitDepths = listOf(8, 10),
-                    supportedOutputFormats = listOf("YUV420P", "RGBA_8888")
+                    supportedProfiles = if (hasSw) listOf("Baseline", "Main", "High", "High 10") else emptyList(),
+                    supportedBitDepths = if (hasSw) listOf(8, 10) else emptyList(),
+                    supportedOutputFormats = if (hasSw) listOf("YUV420P", "RGBA_8888") else emptyList()
                 )
             }
             MimeTypes.VIDEO_H265 -> {
-                val ffmpegVer = nativeLib.getFFmpegVersion()
+                val ffmpegVer = if (hasSw) nativeLib.getFFmpegVersion() else "unavailable"
                 CodecReport(
                     mimeType = mimeType,
                     isHardwareAccelerated = hasHw,
                     isSoftwareFallbackAvailable = hasSw,
                     softwareEngine = if (hasSw) "FFmpeg $ffmpegVer" else null,
-                    supportedProfiles = listOf("Main", "Main 10", "Main Still Picture"),
-                    supportedBitDepths = listOf(8, 10),
-                    supportedOutputFormats = listOf("YUV420P", "YUV420P10LE", "RGBA_8888")
+                    supportedProfiles = if (hasSw) listOf("Main", "Main 10") else emptyList(),
+                    supportedBitDepths = if (hasSw) listOf(8, 10) else emptyList(),
+                    supportedOutputFormats = if (hasSw) listOf("YUV420P", "YUV420P10LE", "RGBA_8888") else emptyList()
                 )
             }
             MimeTypes.VIDEO_VP9 -> {
-                val ffmpegVer = nativeLib.getFFmpegVersion()
+                val ffmpegVer = if (hasSw) nativeLib.getFFmpegVersion() else "unavailable"
                 CodecReport(
                     mimeType = mimeType,
                     isHardwareAccelerated = hasHw,
                     isSoftwareFallbackAvailable = hasSw,
                     softwareEngine = if (hasSw) "FFmpeg $ffmpegVer" else null,
-                    supportedProfiles = listOf("Profile 0", "Profile 2"),
-                    supportedBitDepths = listOf(8, 10),
-                    supportedOutputFormats = listOf("YUV420P", "RGBA_8888")
+                    supportedProfiles = if (hasSw) listOf("Profile 0", "Profile 2") else emptyList(),
+                    supportedBitDepths = if (hasSw) listOf(8, 10) else emptyList(),
+                    supportedOutputFormats = if (hasSw) listOf("YUV420P", "RGBA_8888") else emptyList()
                 )
             }
             MimeTypes.VIDEO_VP8, MimeTypes.VIDEO_MP4V, MimeTypes.VIDEO_MPEG2 -> {
-                val ffmpegVer = nativeLib.getFFmpegVersion()
+                val ffmpegVer = if (hasSw) nativeLib.getFFmpegVersion() else "unavailable"
                 CodecReport(
                     mimeType = mimeType,
                     isHardwareAccelerated = hasHw,
                     isSoftwareFallbackAvailable = hasSw,
                     softwareEngine = if (hasSw) "FFmpeg $ffmpegVer" else null,
-                    supportedProfiles = listOf("Main"),
-                    supportedBitDepths = listOf(8),
-                    supportedOutputFormats = listOf("YUV420P", "RGBA_8888")
+                    supportedProfiles = if (hasSw) listOf("Main") else emptyList(),
+                    supportedBitDepths = if (hasSw) listOf(8) else emptyList(),
+                    supportedOutputFormats = if (hasSw) listOf("YUV420P", "RGBA_8888") else emptyList()
                 )
             }
             else -> {
@@ -134,4 +134,3 @@ object CodecCapabilities {
         }
     }
 }
-

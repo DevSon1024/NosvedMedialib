@@ -1,5 +1,6 @@
 package com.nosved.nosvedmedia.media3
 
+import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
@@ -8,11 +9,12 @@ import com.nosved.native_codecs.NativeLib
 @UnstableApi
 object AudioDecoderCapabilities {
 
-    val SUPPORTED_MIME_TYPES: Set<String> = setOf(
+    private val nativeLib by lazy { NativeLib() }
+
+    val VERIFIED_MIME_TYPES: Set<String> = setOf(
         MimeTypes.AUDIO_E_AC3,
         MimeTypes.AUDIO_E_AC3_JOC,
         MimeTypes.AUDIO_AC3,
-        MimeTypes.AUDIO_AC4,
         MimeTypes.AUDIO_TRUEHD,
         MimeTypes.AUDIO_DTS,
         MimeTypes.AUDIO_DTS_HD,
@@ -28,23 +30,28 @@ object AudioDecoderCapabilities {
         MimeTypes.AUDIO_MPEG_L2,
         MimeTypes.AUDIO_WAV,
         "audio/x-ms-wma",
-        "audio/wma",
-        "audio/x-ms-wmapro",
-        "audio/mlp"
+        "audio/wma"
     )
 
     fun isFormatSupported(format: Format): Boolean {
+        if (!NativeLib.isLibraryLoaded) return false
+
         val sampleMimeType = format.sampleMimeType ?: return false
+        if (format.cryptoType != C.CRYPTO_TYPE_NONE) {
+            return false
+        }
+
         return isMimeTypeSupported(sampleMimeType)
     }
 
     fun isMimeTypeSupported(mimeType: String): Boolean {
         if (!NativeLib.isLibraryLoaded) return false
-        return SUPPORTED_MIME_TYPES.contains(mimeType)
+        if (!VERIFIED_MIME_TYPES.contains(mimeType)) return false
+        return nativeLib.isAudioMimeTypeSupported(mimeType)
     }
 
     fun getSupportedMimeTypes(): List<String> {
-        return SUPPORTED_MIME_TYPES.toList()
+        if (!NativeLib.isLibraryLoaded) return emptyList()
+        return VERIFIED_MIME_TYPES.filter { nativeLib.isAudioMimeTypeSupported(it) }
     }
 }
-

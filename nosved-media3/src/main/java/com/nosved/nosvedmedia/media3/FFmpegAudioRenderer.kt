@@ -16,20 +16,39 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 class FFmpegAudioRenderer(
     eventHandler: Handler? = null,
     eventListener: AudioRendererEventListener? = null,
-    audioSink: AudioSink
+    audioSink: AudioSink,
+    private val selectionListener: DecoderSelectionListener? = null,
+    private val diagnosticsListener: PlaybackDiagnosticsListener? = null
 ) : DecoderAudioRenderer<FFmpegAudioDecoder>(eventHandler, eventListener, audioSink) {
 
     constructor(
         context: Context,
         eventHandler: Handler? = null,
-        eventListener: AudioRendererEventListener? = null
-    ) : this(eventHandler, eventListener, DefaultAudioSink.Builder(context).build())
+        eventListener: AudioRendererEventListener? = null,
+        selectionListener: DecoderSelectionListener? = null,
+        diagnosticsListener: PlaybackDiagnosticsListener? = null
+    ) : this(
+        eventHandler,
+        eventListener,
+        DefaultAudioSink.Builder(context).build(),
+        selectionListener,
+        diagnosticsListener
+    )
+
+    constructor(
+        eventHandler: Handler? = null,
+        eventListener: AudioRendererEventListener? = null,
+        audioSink: AudioSink
+    ) : this(eventHandler, eventListener, audioSink, null, null)
+
+    private var currentFormat: Format? = null
+    private var hasRenderedFirstSample = false
 
     override fun getName(): String = "FFmpegAudioRenderer"
 
     override fun supportsFormatInternal(format: Format): Int {
         val sampleMimeType = format.sampleMimeType ?: return C.FORMAT_UNSUPPORTED_TYPE
-        if (!AudioDecoderCapabilities.isMimeTypeSupported(sampleMimeType)) {
+        if (!AudioDecoderCapabilities.isFormatSupported(format)) {
             return C.FORMAT_UNSUPPORTED_TYPE
         }
         if (format.cryptoType != C.CRYPTO_TYPE_NONE) {
@@ -55,17 +74,105 @@ class FFmpegAudioRenderer(
         cryptoConfig: CryptoConfig?
     ): FFmpegAudioDecoder {
         if (cryptoConfig != null) {
+            val error = StructuredPlaybackError(
+                category = DecodingCategory.UNSUPPORTED_FORMAT,
+                trackType = TrackType.AUDIO,
+                decoderEngine = "FFmpeg Audio Decoder",
+                errorMessage = "Encrypted audio is not supported by FFmpeg software decoder",
+                isFatal = true
+            )
+            diagnosticsListener?.onStructuredError(error)
             throw FFmpegDecoderException("Encrypted audio is not supported by FFmpeg software decoder")
         }
-        return FFmpegAudioDecoder(format)
+
+        currentFormat = format
+        hasRenderedFirstSample = false
+
+        selectionListener?.onDecoderSelected(getName(), true, format)
+        diagnosticsListener?.onDecoderStateChanged(
+            TrackDecoderStatus(
+                trackType = TrackType.AUDIO,
+                state = DecoderState.INITIALIZING,
+                selectedRenderer = getName(),
+                actualDecoderEngine = "FFmpeg Audio Decoder",
+                isHardware = false,
+                format = format,
+                mimeType = format.sampleMimeType,
+                sampleRate = format.sampleRate,
+                channelCount = format.channelCount,
+                initializedTimestampMs = System.currentTimeMillis()
+            )
+        )
+
+        val decoder = FFmpegAudioDecoder(format)
+
+        diagnosticsListener?.onDecoderStateChanged(
+            TrackDecoderStatus(
+                trackType = TrackType.AUDIO,
+                state = DecoderState.INITIALIZED,
+                selectedRenderer = getName(),
+                actualDecoderEngine = "FFmpeg Audio Decoder",
+                isHardware = false,
+                format = format,
+                mimeType = format.sampleMimeType,
+                sampleRate = decoder.sampleRate,
+                channelCount = decoder.channelCount,
+                initializedTimestampMs = System.currentTimeMillis()
+            )
+        )
+
+        return decoder
     }
 
     override fun getOutputFormat(decoder: FFmpegAudioDecoder): Format {
+        if (!hasRenderedFirstSample) {
+            hasRenderedFirstSample = true
+            val fmt = currentFormat
+            if (fmt != null) {
+                selectionListener?.onDecoderActivated(TrackType.AUDIO, getName(), "FFmpeg Audio Decoder", fmt)
+            }
+            diagnosticsListener?.onFirstFrameRendered(TrackType.AUDIO, "FFmpeg Audio Decoder", 0L)
+            diagnosticsListener?.onDecoderStateChanged(
+                TrackDecoderStatus(
+                    trackType = TrackType.AUDIO,
+                    state = DecoderState.PLAYING,
+                    selectedRenderer = getName(),
+                    actualDecoderEngine = "FFmpeg Audio Decoder",
+                    isHardware = false,
+                    format = fmt,
+                    mimeType = fmt?.sampleMimeType,
+                    sampleRate = decoder.sampleRate,
+                    channelCount = decoder.channelCount,
+                    firstFrameTimestampMs = System.currentTimeMillis()
+                )
+            )
+        }
+
         return Format.Builder()
             .setSampleMimeType(MimeTypes.AUDIO_RAW)
             .setChannelCount(decoder.channelCount)
             .setSampleRate(decoder.sampleRate)
             .setPcmEncoding(decoder.encoding)
             .build()
+    }
+
+    override fun onPositionReset(positionUs: Long, joining: Boolean, streamChanged: Boolean) {
+        super.onPositionReset(positionUs, joining, streamChanged)
+        hasRenderedFirstSample = false
+    }
+
+    override fun onDisabled() {
+        super.onDisabled()
+        hasRenderedFirstSample = false
+        selectionListener?.onDecoderReleased(TrackType.AUDIO, getName())
+        diagnosticsListener?.onDecoderStateChanged(
+            TrackDecoderStatus(
+                trackType = TrackType.AUDIO,
+                state = DecoderState.RELEASED,
+                selectedRenderer = getName(),
+                actualDecoderEngine = "FFmpeg Audio Decoder",
+                isHardware = false
+            )
+        )
     }
 }
