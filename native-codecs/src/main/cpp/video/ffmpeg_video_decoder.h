@@ -3,10 +3,7 @@
 
 #include <string>
 #include <vector>
-#include <deque>
 #include <mutex>
-#include <thread>
-#include <algorithm>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 #include "video_frame.h"
@@ -14,6 +11,7 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/time.h>
 #include <libswscale/swscale.h>
 }
 
@@ -21,41 +19,77 @@ namespace nosved {
 
 constexpr int MAX_OUTPUT_BUFFERS = 16;
 
+enum VideoDecodeResult {
+    DECODE_OK = 0,
+    DECODE_NEED_MORE_INPUT = 1,
+    DECODE_END_OF_STREAM = 2,
+    DECODE_BUFFER_FULL = 3,
+    DECODE_ERROR_INVALID_STATE = -1,
+    DECODE_ERROR_INVALID_EXTRADATA = -2,
+    DECODE_ERROR_INIT_FAILED = -3,
+    DECODE_ERROR_CORRUPTED_PACKET = -4,
+    DECODE_ERROR_UNSUPPORTED_PIXEL_FORMAT = -5,
+    DECODE_ERROR_NO_MEMORY = -6,
+    DECODE_ERROR_FATAL = -7
+};
+
+enum class SlotState {
+    FREE,
+    READY,
+    IN_USE
+};
+
+struct OutputSlot {
+    AVFrame* frame = nullptr;
+    VideoFrameInfo info = {};
+    SlotState state = SlotState::FREE;
+    uint32_t generation = 0;
+};
+
 class FfmpegVideoDecoder {
 public:
     FfmpegVideoDecoder();
     ~FfmpegVideoDecoder();
 
-    bool open(const std::string& mimeType, const uint8_t* extraData, int extraDataSize, int width, int height);
+    bool open(const std::string& mimeType, const uint8_t* extraData, int extraDataSize, int width, int height, int threadCount = 0);
 
-    // bufferIndex: 0 .. MAX_OUTPUT_BUFFERS-1
+    // Decoupled send/receive architecture
+    int sendPacket(const uint8_t* packetData, int packetSize, int64_t ptsUs, int64_t dtsUs);
+    int sendEos();
+    int receiveFrame(int& outSlotIndex, VideoFrameInfo* outInfo);
+
+    // Legacy unified entry point for backward compatibility
     int decode(int bufferIndex, const uint8_t* packetData, int packetSize, int64_t ptsUs, bool isEos);
 
-    bool getFrameInfo(int bufferIndex, VideoFrameInfo* outInfo);
-    bool renderToSurface(int bufferIndex, ANativeWindow* window);
-    void releaseFrame(int bufferIndex);
+    bool getFrameInfo(int slotIndex, VideoFrameInfo* outInfo);
+    bool renderToSurface(int slotIndex, ANativeWindow* window);
+    void releaseFrame(int slotIndex);
 
     void flush();
     void close();
 
+    std::string getLastErrorMessage() const;
+
 private:
     void releaseResources();
-    void clearPendingFrames();
+    int findFreeSlotLocked() const;
     static enum AVCodecID getCodecIdForMimeType(const std::string& mimeType);
+    static std::vector<uint8_t> normalizeExtraData(enum AVCodecID codecId, const uint8_t* extraData, int extraDataSize);
+    static void convertAvcOrHevcToAnnexB(uint8_t* data, int size);
 
-    std::mutex codecMutex_;
+    mutable std::mutex codecMutex_;
     AVCodecContext* codecContext_ = nullptr;
     AVPacket* packet_ = nullptr;
     AVFrame* tempFrame_ = nullptr;
-    std::deque<AVFrame*> pendingFrames_;
     enum AVCodecID codecId_ = AV_CODEC_ID_NONE;
-    bool isEos_ = false;
+    bool isEosSent_ = false;
+    bool isEosReached_ = false;
+    int64_t lastPts_ = 0;
+    std::string lastErrorMessage_;
 
-    // Buffer-indexed frame storage (decoupled from decoding)
-    std::mutex renderMutex_;
-    AVFrame* outputFrames_[MAX_OUTPUT_BUFFERS] = { nullptr };
-    VideoFrameInfo frameInfos_[MAX_OUTPUT_BUFFERS] = {};
-    bool frameValid_[MAX_OUTPUT_BUFFERS] = { false };
+    // Explicit bounded buffer slot management
+    mutable std::mutex renderMutex_;
+    OutputSlot slots_[MAX_OUTPUT_BUFFERS];
 
     SwsContext* swsContext_ = nullptr;
     int cachedWidth_ = 0;
