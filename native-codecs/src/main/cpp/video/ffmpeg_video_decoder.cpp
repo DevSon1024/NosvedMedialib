@@ -3,8 +3,60 @@
 #include <cstring>
 #include <algorithm>
 #include <thread>
+#include <cmath>
 
 namespace nosved {
+
+static uint8_t s_pqToSdrLut[256];
+static uint8_t s_hlgToSdrLut[256];
+static std::once_flag s_lutInitOnce;
+
+void FfmpegVideoDecoder::initToneMapLuts() {
+    std::call_once(s_lutInitOnce, []() {
+        for (int i = 0; i < 256; ++i) {
+            float v = i / 255.0f;
+            float mapped = std::pow(v, 0.65f) * 1.35f;
+            if (mapped > 0.85f) {
+                float over = mapped - 0.85f;
+                mapped = 0.85f + (over / (1.0f + over * 1.5f)) * 0.15f;
+            }
+            int val = static_cast<int>(mapped * 255.0f + 0.5f);
+            s_pqToSdrLut[i] = static_cast<uint8_t>(std::min(255, std::max(0, val)));
+        }
+
+        for (int i = 0; i < 256; ++i) {
+            float v = i / 255.0f;
+            float mapped = std::pow(v, 0.82f) * 1.18f;
+            if (mapped > 0.90f) {
+                float over = mapped - 0.90f;
+                mapped = 0.90f + (over / (1.0f + over * 1.2f)) * 0.10f;
+            }
+            int val = static_cast<int>(mapped * 255.0f + 0.5f);
+            s_hlgToSdrLut[i] = static_cast<uint8_t>(std::min(255, std::max(0, val)));
+        }
+    });
+}
+
+void FfmpegVideoDecoder::applyToneMapping(ANativeWindow_Buffer& windowBuffer, int colorTransfer) {
+    initToneMapLuts();
+    const uint8_t* lut = (colorTransfer == AVCOL_TRC_ARIB_STD_B67) ? s_hlgToSdrLut : s_pqToSdrLut;
+
+    uint8_t* row = static_cast<uint8_t*>(windowBuffer.bits);
+    const int width = windowBuffer.width;
+    const int height = windowBuffer.height;
+    const int strideBytes = windowBuffer.stride * 4;
+
+    for (int y = 0; y < height; ++y) {
+        uint8_t* px = row;
+        for (int x = 0; x < width; ++x) {
+            px[0] = lut[px[0]];
+            px[1] = lut[px[1]];
+            px[2] = lut[px[2]];
+            px += 4;
+        }
+        row += strideBytes;
+    }
+}
 
 FfmpegVideoDecoder::FfmpegVideoDecoder() = default;
 
@@ -144,8 +196,20 @@ void FfmpegVideoDecoder::convertAvcOrHevcToAnnexB(uint8_t* data, int size) {
     }
 }
 
-bool FfmpegVideoDecoder::open(const std::string& mimeType, const uint8_t* extraData, int extraDataSize, int width, int height, int threadCount) {
+bool FfmpegVideoDecoder::open(
+    const std::string& mimeType,
+    const uint8_t* extraData,
+    int extraDataSize,
+    int width,
+    int height,
+    int threadCount,
+    VideoScalingMode scalingMode,
+    bool enableToneMapping
+) {
     releaseResources();
+
+    scalingMode_ = scalingMode;
+    enableToneMapping_ = enableToneMapping;
 
     std::lock_guard<std::mutex> codecLock(codecMutex_);
 
@@ -370,11 +434,26 @@ int FfmpegVideoDecoder::receiveFrame(int& outSlotIndex, VideoFrameInfo* outInfo)
         lastPts_ = pts;
     }
 
+    const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(static_cast<AVPixelFormat>(slots_[slotIndex].frame->format));
+    int bitDepth = desc ? desc->comp[0].depth : 8;
+
+    VideoColorInfo colorInfo;
+    colorInfo.colorSpace = slots_[slotIndex].frame->colorspace;
+    colorInfo.colorRange = slots_[slotIndex].frame->color_range;
+    colorInfo.colorPrimaries = slots_[slotIndex].frame->color_primaries;
+    colorInfo.colorTransfer = slots_[slotIndex].frame->color_trc;
+    colorInfo.bitDepth = bitDepth;
+    colorInfo.isHdr = (slots_[slotIndex].frame->color_trc == AVCOL_TRC_SMPTE2084 ||
+                       slots_[slotIndex].frame->color_trc == AVCOL_TRC_ARIB_STD_B67 ||
+                       (slots_[slotIndex].frame->color_primaries == AVCOL_PRI_BT2020 && bitDepth >= 10));
+
     slots_[slotIndex].info.width = slots_[slotIndex].frame->width;
     slots_[slotIndex].info.height = slots_[slotIndex].frame->height;
     slots_[slotIndex].info.pts = pts;
     slots_[slotIndex].info.format = slots_[slotIndex].frame->format;
+    slots_[slotIndex].info.bitDepth = bitDepth;
     slots_[slotIndex].info.isKeyFrame = (slots_[slotIndex].frame->flags & AV_FRAME_FLAG_KEY) != 0;
+    slots_[slotIndex].info.colorInfo = colorInfo;
     slots_[slotIndex].state = SlotState::READY;
 
     outSlotIndex = slotIndex;
@@ -457,11 +536,18 @@ bool FfmpegVideoDecoder::renderToSurface(int slotIndex, ANativeWindow* window) {
         return false;
     }
 
+    int swsFlags = SWS_BILINEAR;
+    if (scalingMode_ == VideoScalingMode::FAST_BILINEAR) {
+        swsFlags = SWS_FAST_BILINEAR;
+    } else if (scalingMode_ == VideoScalingMode::BICUBIC) {
+        swsFlags = SWS_BICUBIC;
+    }
+
     swsContext_ = sws_getCachedContext(
         swsContext_,
         frameW, frameH, srcFormat,
         windowBuffer.width, windowBuffer.height, AV_PIX_FMT_RGBA,
-        SWS_FAST_BILINEAR,
+        swsFlags,
         nullptr, nullptr, nullptr
     );
 
@@ -471,10 +557,47 @@ bool FfmpegVideoDecoder::renderToSurface(int slotIndex, ANativeWindow* window) {
         return false;
     }
 
+    int srcColorSpace = frame->colorspace;
+    if (srcColorSpace == AVCOL_SPC_UNSPECIFIED || srcColorSpace == AVCOL_SPC_RESERVED) {
+        srcColorSpace = (frameW >= 1280 || frameH >= 720) ? AVCOL_SPC_BT709 : AVCOL_SPC_SMPTE170M;
+    }
+
+    int swsSrcCS = SWS_CS_ITU709;
+    if (srcColorSpace == AVCOL_SPC_BT2020_NCL || srcColorSpace == AVCOL_SPC_BT2020_CL) {
+        swsSrcCS = SWS_CS_BT2020;
+    } else if (srcColorSpace == AVCOL_SPC_SMPTE170M || srcColorSpace == AVCOL_SPC_BT470BG) {
+        swsSrcCS = SWS_CS_ITU601;
+    } else if (srcColorSpace == AVCOL_SPC_SMPTE240M) {
+        swsSrcCS = SWS_CS_SMPTE240M;
+    }
+
+    int srcRange = (frame->color_range == AVCOL_RANGE_JPEG) ? 1 : 0;
+    int dstRange = 1; // Full range RGB
+
+    const int* invTable = sws_getCoefficients(swsSrcCS);
+    const int* table = sws_getCoefficients(SWS_CS_DEFAULT);
+
+    if (invTable && table) {
+        sws_setColorspaceDetails(
+            swsContext_,
+            invTable,
+            srcRange,
+            table,
+            dstRange,
+            0,
+            1 << 16,
+            1 << 16
+        );
+    }
+
     uint8_t* dstData[4] = { static_cast<uint8_t*>(windowBuffer.bits), nullptr, nullptr, nullptr };
     int dstLinesize[4] = { windowBuffer.stride * 4, 0, 0, 0 };
 
     sws_scale(swsContext_, frame->data, frame->linesize, 0, frameH, dstData, dstLinesize);
+
+    if (enableToneMapping_ && (frame->color_trc == AVCOL_TRC_SMPTE2084 || frame->color_trc == AVCOL_TRC_ARIB_STD_B67)) {
+        applyToneMapping(windowBuffer, frame->color_trc);
+    }
 
     ANativeWindow_unlockAndPost(window);
     return true;

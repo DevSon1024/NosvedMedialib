@@ -26,7 +26,13 @@ public:
     Dav1dVideoDecoder(const Dav1dVideoDecoder&) = delete;
     Dav1dVideoDecoder& operator=(const Dav1dVideoDecoder&) = delete;
 
-    bool open(int width = 0, int height = 0, int nThreads = 0);
+    bool open(
+        int width = 0,
+        int height = 0,
+        int nThreads = 0,
+        VideoScalingMode scalingMode = VideoScalingMode::BILINEAR,
+        bool enableToneMapping = true
+    );
     int decode(int bufferIndex, const uint8_t* packetData, int packetSize, int64_t ptsUs, bool isEos);
     bool getFrameInfo(int bufferIndex, VideoFrameInfo& outInfo);
     bool renderToSurface(int bufferIndex, ANativeWindow* window);
@@ -51,6 +57,9 @@ private:
     int cachedWidth_ = 0;
     int cachedHeight_ = 0;
     int cachedFormat_ = -1;
+    VideoScalingMode scalingMode_ = VideoScalingMode::BILINEAR;
+    bool enableToneMapping_ = true;
+    static void applyToneMapping(ANativeWindow_Buffer& windowBuffer, int colorTransfer);
 };
 
 } // namespace nosved

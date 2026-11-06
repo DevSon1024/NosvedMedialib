@@ -12,6 +12,7 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/time.h>
+#include <libavutil/pixdesc.h>
 #include <libswscale/swscale.h>
 }
 
@@ -51,7 +52,16 @@ public:
     FfmpegVideoDecoder();
     ~FfmpegVideoDecoder();
 
-    bool open(const std::string& mimeType, const uint8_t* extraData, int extraDataSize, int width, int height, int threadCount = 0);
+    bool open(
+        const std::string& mimeType,
+        const uint8_t* extraData,
+        int extraDataSize,
+        int width,
+        int height,
+        int threadCount = 0,
+        VideoScalingMode scalingMode = VideoScalingMode::BILINEAR,
+        bool enableToneMapping = true
+    );
 
     // Decoupled send/receive architecture
     int sendPacket(const uint8_t* packetData, int packetSize, int64_t ptsUs, int64_t dtsUs);
@@ -76,6 +86,8 @@ private:
     static enum AVCodecID getCodecIdForMimeType(const std::string& mimeType);
     static std::vector<uint8_t> normalizeExtraData(enum AVCodecID codecId, const uint8_t* extraData, int extraDataSize);
     static void convertAvcOrHevcToAnnexB(uint8_t* data, int size);
+    static void initToneMapLuts();
+    static void applyToneMapping(ANativeWindow_Buffer& windowBuffer, int colorTransfer);
 
     mutable std::mutex codecMutex_;
     AVCodecContext* codecContext_ = nullptr;
@@ -86,6 +98,8 @@ private:
     bool isEosReached_ = false;
     int64_t lastPts_ = 0;
     std::string lastErrorMessage_;
+    VideoScalingMode scalingMode_ = VideoScalingMode::BILINEAR;
+    bool enableToneMapping_ = true;
 
     // Explicit bounded buffer slot management
     mutable std::mutex renderMutex_;
@@ -95,6 +109,8 @@ private:
     int cachedWidth_ = 0;
     int cachedHeight_ = 0;
     int cachedFormat_ = -1;
+    int cachedColorSpace_ = -1;
+    int cachedColorRange_ = -1;
 };
 
 } // namespace nosved

@@ -162,7 +162,9 @@ Java_com_nosved_native_1codecs_NativeLib_nativeCreateVideoDecoderConfigured(
         jbyteArray jExtraData,
         jint width,
         jint height,
-        jint threadCount) {
+        jint threadCount,
+        jint scalingMode,
+        jboolean enableToneMapping) {
     if (!jMimeType) return 0L;
 
     const char* mimeChars = env->GetStringUTFChars(jMimeType, nullptr);
@@ -188,7 +190,8 @@ Java_com_nosved_native_1codecs_NativeLib_nativeCreateVideoDecoderConfigured(
         return 0L;
     }
 
-    bool ok = decoder->open(mimeType, extraDataPtr, extraDataSize, width, height, threadCount);
+    nosved::VideoScalingMode mode = static_cast<nosved::VideoScalingMode>(scalingMode);
+    bool ok = decoder->open(mimeType, extraDataPtr, extraDataSize, width, height, threadCount, mode, enableToneMapping == JNI_TRUE);
 
     if (byteElements) {
         env->ReleaseByteArrayElements(jExtraData, byteElements, JNI_ABORT);
@@ -249,14 +252,31 @@ Java_com_nosved_native_1codecs_NativeLib_nativeReceiveVideoFrame(
     nosved::VideoFrameInfo info;
     int res = decoder->receiveFrame(slotIndex, &info);
     if (res == nosved::DECODE_OK) {
-        jint temp[5] = {
-            slotIndex,
-            info.width,
-            info.height,
-            info.isKeyFrame ? 1 : 0,
-            info.format
-        };
-        env->SetIntArrayRegion(jOutInfo, 0, 5, temp);
+        jsize len = env->GetArrayLength(jOutInfo);
+        if (len >= 10) {
+            jint temp[10] = {
+                slotIndex,
+                info.width,
+                info.height,
+                info.isKeyFrame ? 1 : 0,
+                info.format,
+                info.bitDepth,
+                info.colorInfo.colorSpace,
+                info.colorInfo.colorRange,
+                info.colorInfo.colorTransfer,
+                info.colorInfo.isHdr ? 1 : 0
+            };
+            env->SetIntArrayRegion(jOutInfo, 0, 10, temp);
+        } else if (len >= 5) {
+            jint temp[5] = {
+                slotIndex,
+                info.width,
+                info.height,
+                info.isKeyFrame ? 1 : 0,
+                info.format
+            };
+            env->SetIntArrayRegion(jOutInfo, 0, 5, temp);
+        }
     }
     return res;
 }
@@ -412,6 +432,24 @@ Java_com_nosved_native_1codecs_NativeLib_nativeCreateDav1dDecoder(
     return reinterpret_cast<jlong>(decoder.release());
 }
 
+JNIEXPORT jlong JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeCreateDav1dDecoderConfigured(
+        JNIEnv* /*env*/,
+        jobject /* this */,
+        jint width,
+        jint height,
+        jint nThreads,
+        jint scalingMode,
+        jboolean enableToneMapping) {
+    auto decoder = std::make_unique<nosved::Dav1dVideoDecoder>();
+    nosved::VideoScalingMode mode = static_cast<nosved::VideoScalingMode>(scalingMode);
+    if (!decoder->open(width, height, nThreads, mode, enableToneMapping == JNI_TRUE)) {
+        LOGE("Failed to open dav1d decoder");
+        return 0L;
+    }
+    return reinterpret_cast<jlong>(decoder.release());
+}
+
 JNIEXPORT jint JNICALL
 Java_com_nosved_native_1codecs_NativeLib_nativeDecodeDav1d(
         JNIEnv* env,
@@ -452,14 +490,30 @@ Java_com_nosved_native_1codecs_NativeLib_nativeGetDav1dFrameInfo(
         return JNI_FALSE;
     }
 
-    jint temp[5] = {
-        info.width,
-        info.height,
-        info.isKeyFrame ? 1 : 0,
-        info.format,
-        info.bitDepth
-    };
-    env->SetIntArrayRegion(jOutInfo, 0, 5, temp);
+    jsize len = env->GetArrayLength(jOutInfo);
+    if (len >= 9) {
+        jint temp[9] = {
+            info.width,
+            info.height,
+            info.isKeyFrame ? 1 : 0,
+            info.format,
+            info.bitDepth,
+            info.colorInfo.colorSpace,
+            info.colorInfo.colorRange,
+            info.colorInfo.colorTransfer,
+            info.colorInfo.isHdr ? 1 : 0
+        };
+        env->SetIntArrayRegion(jOutInfo, 0, 9, temp);
+    } else if (len >= 5) {
+        jint temp[5] = {
+            info.width,
+            info.height,
+            info.isKeyFrame ? 1 : 0,
+            info.format,
+            info.bitDepth
+        };
+        env->SetIntArrayRegion(jOutInfo, 0, 5, temp);
+    }
     return JNI_TRUE;
 }
 

@@ -26,7 +26,7 @@ class Dav1dVideoDecoder(
 
     private val nativeLib = NativeLib()
     private var nativeHandle: Long = 0L
-    private val frameInfo = IntArray(5)
+    private val frameInfo = IntArray(9)
     private val bufferIndices = Collections.synchronizedMap(IdentityHashMap<VideoDecoderOutputBuffer, Int>())
     private var bufferCounter = 0
 
@@ -45,7 +45,13 @@ class Dav1dVideoDecoder(
         val width = if (format.width != Format.NO_VALUE) format.width else 0
         val height = if (format.height != Format.NO_VALUE) format.height else 0
 
-        nativeHandle = nativeLib.createDav1dDecoder(width, height, 0)
+        nativeHandle = nativeLib.createDav1dDecoder(
+            width,
+            height,
+            config.threadCount,
+            config.scalingMode.nativeValue,
+            config.enableHdrToneMapping
+        )
         if (nativeHandle == 0L) {
             val error = DecodingError(
                 decoderName = "Dav1dVideoDecoder",

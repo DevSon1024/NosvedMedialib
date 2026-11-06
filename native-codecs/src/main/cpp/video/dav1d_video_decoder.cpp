@@ -3,8 +3,60 @@
 #include <cstring>
 #include <thread>
 #include <algorithm>
+#include <cmath>
 
 namespace nosved {
+
+static uint8_t s_dav1dPqLut[256];
+static uint8_t s_dav1dHlgLut[256];
+static std::once_flag s_dav1dLutOnce;
+
+static void initDav1dToneMapLuts() {
+    std::call_once(s_dav1dLutOnce, []() {
+        for (int i = 0; i < 256; ++i) {
+            float v = i / 255.0f;
+            float mapped = std::pow(v, 0.65f) * 1.35f;
+            if (mapped > 0.85f) {
+                float over = mapped - 0.85f;
+                mapped = 0.85f + (over / (1.0f + over * 1.5f)) * 0.15f;
+            }
+            int val = static_cast<int>(mapped * 255.0f + 0.5f);
+            s_dav1dPqLut[i] = static_cast<uint8_t>(std::min(255, std::max(0, val)));
+        }
+
+        for (int i = 0; i < 256; ++i) {
+            float v = i / 255.0f;
+            float mapped = std::pow(v, 0.82f) * 1.18f;
+            if (mapped > 0.90f) {
+                float over = mapped - 0.90f;
+                mapped = 0.90f + (over / (1.0f + over * 1.2f)) * 0.10f;
+            }
+            int val = static_cast<int>(mapped * 255.0f + 0.5f);
+            s_dav1dHlgLut[i] = static_cast<uint8_t>(std::min(255, std::max(0, val)));
+        }
+    });
+}
+
+void Dav1dVideoDecoder::applyToneMapping(ANativeWindow_Buffer& windowBuffer, int colorTransfer) {
+    initDav1dToneMapLuts();
+    const uint8_t* lut = (colorTransfer == 18) ? s_dav1dHlgLut : s_dav1dPqLut;
+
+    uint8_t* row = static_cast<uint8_t*>(windowBuffer.bits);
+    const int width = windowBuffer.width;
+    const int height = windowBuffer.height;
+    const int strideBytes = windowBuffer.stride * 4;
+
+    for (int y = 0; y < height; ++y) {
+        uint8_t* px = row;
+        for (int x = 0; x < width; ++x) {
+            px[0] = lut[px[0]];
+            px[1] = lut[px[1]];
+            px[2] = lut[px[2]];
+            px += 4;
+        }
+        row += strideBytes;
+    }
+}
 
 Dav1dVideoDecoder::Dav1dVideoDecoder() {
     for (int i = 0; i < MAX_DAV1D_OUTPUT_BUFFERS; ++i) {
@@ -21,8 +73,11 @@ const char* Dav1dVideoDecoder::getVersion() {
     return dav1d_version();
 }
 
-bool Dav1dVideoDecoder::open(int width, int height, int nThreads) {
+bool Dav1dVideoDecoder::open(int width, int height, int nThreads, VideoScalingMode scalingMode, bool enableToneMapping) {
     releaseResources();
+
+    scalingMode_ = scalingMode;
+    enableToneMapping_ = enableToneMapping;
 
     std::lock_guard<std::mutex> codecLock(codecMutex_);
 
@@ -62,12 +117,29 @@ int Dav1dVideoDecoder::decode(int bufferIndex, const uint8_t* packetData, int pa
             outputPictures_[idx] = pic;
             pictureValid_[idx] = true;
 
+            VideoColorInfo colorInfo;
+            if (pic.seq_hdr) {
+                colorInfo.colorPrimaries = pic.seq_hdr->pri;
+                colorInfo.colorTransfer = pic.seq_hdr->trc;
+                colorInfo.colorSpace = pic.seq_hdr->mtrx;
+                colorInfo.colorRange = pic.seq_hdr->color_range;
+            } else {
+                colorInfo.colorPrimaries = 1;
+                colorInfo.colorTransfer = 1;
+                colorInfo.colorSpace = (pic.p.w >= 1280 || pic.p.h >= 720) ? 1 : 6;
+                colorInfo.colorRange = 0;
+            }
+            colorInfo.bitDepth = pic.p.bpc;
+            colorInfo.isHdr = (colorInfo.colorTransfer == 16 || colorInfo.colorTransfer == 18 ||
+                              (colorInfo.colorPrimaries == 9 && pic.p.bpc >= 10));
+
             frameInfos_[idx].width = pic.p.w;
             frameInfos_[idx].height = pic.p.h;
             frameInfos_[idx].pts = pic.m.timestamp;
             frameInfos_[idx].bitDepth = pic.p.bpc;
             frameInfos_[idx].format = static_cast<int>(pic.p.layout);
             frameInfos_[idx].isKeyFrame = (pic.frame_hdr != nullptr) ? (pic.frame_hdr->frame_type == DAV1D_FRAME_TYPE_KEY) : false;
+            frameInfos_[idx].colorInfo = colorInfo;
 
             return 0; // Decoded picture drained
         } else if (ret == DAV1D_ERR(EAGAIN)) {
@@ -106,12 +178,29 @@ int Dav1dVideoDecoder::decode(int bufferIndex, const uint8_t* packetData, int pa
             outputPictures_[idx] = pic;
             pictureValid_[idx] = true;
 
+            VideoColorInfo colorInfo;
+            if (pic.seq_hdr) {
+                colorInfo.colorPrimaries = pic.seq_hdr->pri;
+                colorInfo.colorTransfer = pic.seq_hdr->trc;
+                colorInfo.colorSpace = pic.seq_hdr->mtrx;
+                colorInfo.colorRange = pic.seq_hdr->color_range;
+            } else {
+                colorInfo.colorPrimaries = 1;
+                colorInfo.colorTransfer = 1;
+                colorInfo.colorSpace = (pic.p.w >= 1280 || pic.p.h >= 720) ? 1 : 6;
+                colorInfo.colorRange = 0;
+            }
+            colorInfo.bitDepth = pic.p.bpc;
+            colorInfo.isHdr = (colorInfo.colorTransfer == 16 || colorInfo.colorTransfer == 18 ||
+                              (colorInfo.colorPrimaries == 9 && pic.p.bpc >= 10));
+
             frameInfos_[idx].width = pic.p.w;
             frameInfos_[idx].height = pic.p.h;
             frameInfos_[idx].pts = pic.m.timestamp;
             frameInfos_[idx].bitDepth = pic.p.bpc;
             frameInfos_[idx].format = static_cast<int>(pic.p.layout);
             frameInfos_[idx].isKeyFrame = (pic.frame_hdr != nullptr) ? (pic.frame_hdr->frame_type == DAV1D_FRAME_TYPE_KEY) : false;
+            frameInfos_[idx].colorInfo = colorInfo;
 
             return 0; // Picture successfully decoded
         } else if (getRet == DAV1D_ERR(EAGAIN)) {
@@ -174,17 +263,55 @@ bool Dav1dVideoDecoder::renderToSurface(int bufferIndex, ANativeWindow* window) 
 
     AVPixelFormat srcFmt = (bpc == 10) ? AV_PIX_FMT_YUV420P10LE : AV_PIX_FMT_YUV420P;
 
+    int swsFlags = SWS_BILINEAR;
+    if (scalingMode_ == VideoScalingMode::FAST_BILINEAR) {
+        swsFlags = SWS_FAST_BILINEAR;
+    } else if (scalingMode_ == VideoScalingMode::BICUBIC) {
+        swsFlags = SWS_BICUBIC;
+    }
+
     swsContext_ = sws_getCachedContext(
         swsContext_,
         width, height, srcFmt,
         winBuffer.width, winBuffer.height, AV_PIX_FMT_RGBA,
-        SWS_FAST_BILINEAR, nullptr, nullptr, nullptr
+        swsFlags, nullptr, nullptr, nullptr
     );
 
     if (!swsContext_) {
         LOGE("Failed to create SwsContext for dav1d surface rendering");
         ANativeWindow_unlockAndPost(window);
         return false;
+    }
+
+    int av1Matrix = pic.seq_hdr ? pic.seq_hdr->mtrx : 1;
+    int swsSrcCS = SWS_CS_ITU709;
+    if (av1Matrix == 9) { // DAV1D_MC_BT2020_NCL
+        swsSrcCS = SWS_CS_BT2020;
+    } else if (av1Matrix == 5 || av1Matrix == 6) { // DAV1D_MC_BT470BG / BT601
+        swsSrcCS = SWS_CS_ITU601;
+    } else if (av1Matrix == 7) { // DAV1D_MC_SMPTE240
+        swsSrcCS = SWS_CS_SMPTE240M;
+    } else {
+        swsSrcCS = (width >= 1280 || height >= 720) ? SWS_CS_ITU709 : SWS_CS_ITU601;
+    }
+
+    int srcRange = pic.seq_hdr ? (pic.seq_hdr->color_range ? 1 : 0) : 0;
+    int dstRange = 1;
+
+    const int* invTable = sws_getCoefficients(swsSrcCS);
+    const int* table = sws_getCoefficients(SWS_CS_DEFAULT);
+
+    if (invTable && table) {
+        sws_setColorspaceDetails(
+            swsContext_,
+            invTable,
+            srcRange,
+            table,
+            dstRange,
+            0,
+            1 << 16,
+            1 << 16
+        );
     }
 
     const uint8_t* srcPlanes[3] = {
@@ -202,6 +329,11 @@ bool Dav1dVideoDecoder::renderToSurface(int bufferIndex, ANativeWindow* window) 
     int dstStrides[4] = { static_cast<int>(winBuffer.stride * 4), 0, 0, 0 };
 
     sws_scale(swsContext_, srcPlanes, srcStrides, 0, height, dstPlanes, dstStrides);
+
+    int trc = pic.seq_hdr ? pic.seq_hdr->trc : 1;
+    if (enableToneMapping_ && (trc == 16 || trc == 18)) {
+        applyToneMapping(winBuffer, trc);
+    }
 
     ANativeWindow_unlockAndPost(window);
     return true;
