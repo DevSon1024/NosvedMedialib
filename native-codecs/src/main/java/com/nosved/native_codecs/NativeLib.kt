@@ -373,7 +373,17 @@ class NativeLib {
         }
     }
 
-    // --- Audio Decoder APIs ---
+    // --- Audio & Video Decoder MIME Inspection APIs ---
+
+    fun isVideoMimeTypeSupported(mimeType: String): Boolean {
+        if (!isLibraryLoaded) return false
+        return try {
+            nativeIsVideoMimeTypeSupported(mimeType)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to check video mime support for $mimeType", e)
+            false
+        }
+    }
 
     fun isAudioMimeTypeSupported(mimeType: String): Boolean {
         if (!isLibraryLoaded) return false
@@ -531,6 +541,7 @@ class NativeLib {
         }
     }
 
+    private external fun nativeIsVideoMimeTypeSupported(mimeType: String): Boolean
     private external fun nativeIsAudioMimeTypeSupported(mimeType: String): Boolean
     private external fun nativeCreateAudioDecoder(
         mimeType: String,

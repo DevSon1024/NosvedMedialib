@@ -586,7 +586,20 @@ Java_com_nosved_native_1codecs_NativeLib_nativeReleaseDav1dDecoder(
     delete decoder;
 }
 
-// Audio Decoder JNI methods
+// Video & Audio Decoder MIME inspection JNI methods
+
+JNIEXPORT jboolean JNICALL
+Java_com_nosved_native_1codecs_NativeLib_nativeIsVideoMimeTypeSupported(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring jMimeType) {
+    if (!jMimeType) return JNI_FALSE;
+    const char* chars = env->GetStringUTFChars(jMimeType, nullptr);
+    if (!chars) return JNI_FALSE;
+    std::string mime(chars);
+    env->ReleaseStringUTFChars(jMimeType, chars);
+    return static_cast<jboolean>(nosved::FfmpegVideoDecoder::isMimeTypeSupported(mime));
+}
 
 JNIEXPORT jboolean JNICALL
 Java_com_nosved_native_1codecs_NativeLib_nativeIsAudioMimeTypeSupported(

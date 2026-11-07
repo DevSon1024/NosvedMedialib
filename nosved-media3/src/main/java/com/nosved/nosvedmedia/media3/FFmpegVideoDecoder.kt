@@ -41,9 +41,22 @@ class FFmpegVideoDecoder(
     private val decodeThread: Thread
 
     init {
-        val mimeType = format.sampleMimeType
+        val rawMimeType = format.sampleMimeType
             ?: throw FFmpegDecoderException("MIME type not specified in format")
-        val extraData = getExtraData(mimeType, format.initializationData)
+
+        // Dynamic routing for Dolby Vision MIME types to underlying stream decoder
+        val mimeType = if (rawMimeType.equals(MimeTypes.VIDEO_DOLBY_VISION, ignoreCase = true)) {
+            val codecs = format.codecs?.lowercase() ?: ""
+            when {
+                codecs.startsWith("dva") || codecs.startsWith("dvc") || codecs.contains("avc") || codecs.contains("h264") -> MimeTypes.VIDEO_H264
+                codecs.startsWith("dav") || codecs.contains("av01") || codecs.contains("av1") -> MimeTypes.VIDEO_AV1
+                else -> MimeTypes.VIDEO_H265
+            }
+        } else {
+            rawMimeType
+        }
+
+        val extraData = getExtraData(rawMimeType, format.initializationData)
         val width = if (format.width != Format.NO_VALUE) format.width else 0
         val height = if (format.height != Format.NO_VALUE) format.height else 0
 
@@ -424,9 +437,65 @@ class FFmpegVideoDecoder(
                     }
                 }
                 MimeTypes.VIDEO_H265 -> {
-                    initializationData[0]
+                    if (initializationData.size >= 3) {
+                        val vps = initializationData[0]
+                        val sps = initializationData[1]
+                        val pps = initializationData[2]
+                        val startCode = byteArrayOf(0, 0, 0, 1)
+                        val total = (startCode.size * 3) + vps.size + sps.size + pps.size
+                        val combined = ByteArray(total)
+                        var off = 0
+                        System.arraycopy(startCode, 0, combined, off, startCode.size); off += startCode.size
+                        System.arraycopy(vps, 0, combined, off, vps.size); off += vps.size
+                        System.arraycopy(startCode, 0, combined, off, startCode.size); off += startCode.size
+                        System.arraycopy(sps, 0, combined, off, sps.size); off += sps.size
+                        System.arraycopy(startCode, 0, combined, off, startCode.size); off += startCode.size
+                        System.arraycopy(pps, 0, combined, off, pps.size)
+                        combined
+                    } else {
+                        initializationData[0]
+                    }
                 }
-                else -> initializationData[0]
+                MimeTypes.VIDEO_DOLBY_VISION -> {
+                    if (initializationData.size == 1) {
+                        initializationData[0]
+                    } else {
+                        val startCode = byteArrayOf(0, 0, 0, 1)
+                        var totalSize = 0
+                        for (block in initializationData) {
+                            val hasStart = block.size >= 4 && block[0] == 0.toByte() && block[1] == 0.toByte() &&
+                                    (block[2] == 1.toByte() || (block[2] == 0.toByte() && block[3] == 1.toByte()))
+                            totalSize += (if (hasStart) 0 else startCode.size) + block.size
+                        }
+                        val combined = ByteArray(totalSize)
+                        var offset = 0
+                        for (block in initializationData) {
+                            val hasStart = block.size >= 4 && block[0] == 0.toByte() && block[1] == 0.toByte() &&
+                                    (block[2] == 1.toByte() || (block[2] == 0.toByte() && block[3] == 1.toByte()))
+                            if (!hasStart) {
+                                System.arraycopy(startCode, 0, combined, offset, startCode.size)
+                                offset += startCode.size
+                            }
+                            System.arraycopy(block, 0, combined, offset, block.size)
+                            offset += block.size
+                        }
+                        combined
+                    }
+                }
+                else -> {
+                    if (initializationData.size == 1) {
+                        initializationData[0]
+                    } else {
+                        val total = initializationData.sumOf { it.size }
+                        val combined = ByteArray(total)
+                        var off = 0
+                        for (block in initializationData) {
+                            System.arraycopy(block, 0, combined, off, block.size)
+                            off += block.size
+                        }
+                        combined
+                    }
+                }
             }
         }
     }

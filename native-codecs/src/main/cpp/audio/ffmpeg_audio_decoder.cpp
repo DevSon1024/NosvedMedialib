@@ -30,6 +30,15 @@ enum AVCodecID FfmpegAudioDecoder::getCodecIdForMimeType(const std::string& mime
     if (mimeType == "audio/x-ms-wmapro") return AV_CODEC_ID_WMAPRO;
     if (mimeType == "audio/x-ms-wmalossless") return AV_CODEC_ID_WMALOSSLESS;
     if (mimeType == "audio/mlp") return AV_CODEC_ID_MLP;
+    if (mimeType == "audio/x-ape" || mimeType == "audio/ape") return AV_CODEC_ID_APE;
+    if (mimeType == "audio/x-wavpack" || mimeType == "audio/wavpack") return AV_CODEC_ID_WAVPACK;
+    if (mimeType == "audio/x-tta" || mimeType == "audio/tta") return AV_CODEC_ID_TTA;
+    if (mimeType == "audio/x-nellymoser" || mimeType == "audio/nellymoser") return AV_CODEC_ID_NELLYMOSER;
+    if (mimeType == "audio/atrac3" || mimeType == "audio/x-vnd.sony.atrac3") return AV_CODEC_ID_ATRAC3;
+    if (mimeType == "audio/atrac3p" || mimeType == "audio/x-vnd.sony.atrac3p") return AV_CODEC_ID_ATRAC3P;
+    if (mimeType == "audio/x-adpcm-ms" || mimeType == "audio/adpcm-ms") return AV_CODEC_ID_ADPCM_MS;
+    if (mimeType == "audio/x-adpcm-ima-wav" || mimeType == "audio/adpcm-ima-wav") return AV_CODEC_ID_ADPCM_IMA_WAV;
+    if (mimeType == "audio/x-cook" || mimeType == "audio/cook") return AV_CODEC_ID_COOK;
     return AV_CODEC_ID_NONE;
 }
 

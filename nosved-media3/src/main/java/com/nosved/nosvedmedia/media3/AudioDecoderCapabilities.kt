@@ -42,7 +42,25 @@ object AudioDecoderCapabilities {
         "audio/x-ms-wma",
         "audio/wma",
         "audio/x-ms-wmapro",
-        "audio/x-ms-wmalossless"
+        "audio/x-ms-wmalossless",
+        "audio/x-ape",
+        "audio/ape",
+        "audio/x-wavpack",
+        "audio/wavpack",
+        "audio/x-tta",
+        "audio/tta",
+        "audio/x-nellymoser",
+        "audio/nellymoser",
+        "audio/atrac3",
+        "audio/x-vnd.sony.atrac3",
+        "audio/atrac3p",
+        "audio/x-vnd.sony.atrac3p",
+        "audio/x-adpcm-ms",
+        "audio/adpcm-ms",
+        "audio/x-adpcm-ima-wav",
+        "audio/adpcm-ima-wav",
+        "audio/x-cook",
+        "audio/cook"
     )
 
     fun isFormatSupported(format: Format): Boolean {

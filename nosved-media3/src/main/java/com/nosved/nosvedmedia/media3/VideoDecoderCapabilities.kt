@@ -9,6 +9,8 @@ import com.nosved.native_codecs.NativeLib
 @UnstableApi
 object VideoDecoderCapabilities {
 
+    private val nativeLib by lazy { NativeLib() }
+
     val SUPPORTED_MIME_TYPES: Set<String> = setOf(
         MimeTypes.VIDEO_H264,
         MimeTypes.VIDEO_H265,
@@ -16,7 +18,29 @@ object VideoDecoderCapabilities {
         MimeTypes.VIDEO_VP9,
         MimeTypes.VIDEO_MP4V,
         MimeTypes.VIDEO_MPEG2,
-        MimeTypes.VIDEO_AV1
+        MimeTypes.VIDEO_AV1,
+        MimeTypes.VIDEO_DOLBY_VISION,
+        MimeTypes.VIDEO_VC1,
+        "video/x-vc1",
+        "video/mpeg",
+        "video/mpeg1",
+        "video/x-theora",
+        "video/theora",
+        "video/x-ffv1",
+        "video/ffv1",
+        "video/x-dnxhd",
+        "video/dnxhd",
+        MimeTypes.VIDEO_H263,
+        "video/h263",
+        "video/x-ms-wmv2",
+        "video/x-ms-wmv",
+        "video/x-ms-wmv3",
+        "video/x-prores",
+        "video/prores",
+        "video/x-pn-realvideo",
+        "video/rv40",
+        MimeTypes.VIDEO_MJPEG,
+        "video/x-mjpeg"
     )
 
     private const val MAX_SOFTWARE_WIDTH = 4096
@@ -68,11 +92,20 @@ object VideoDecoderCapabilities {
     }
 
     fun isDav1dSupported(format: Format): Boolean {
-        return format.sampleMimeType == MimeTypes.VIDEO_AV1 && isFormatSupported(format)
+        val mime = format.sampleMimeType ?: return false
+        val isAv1 = mime == MimeTypes.VIDEO_AV1 ||
+                (mime == MimeTypes.VIDEO_DOLBY_VISION && format.codecs?.lowercase()?.let {
+                    it.startsWith("dav") || it.contains("av01") || it.contains("av1")
+                } == true)
+        return isAv1 && isFormatSupported(format)
     }
 
     fun isFFmpegVideoSupported(format: Format): Boolean {
         val mime = format.sampleMimeType ?: return false
-        return mime != MimeTypes.VIDEO_AV1 && isFormatSupported(format)
+        if (mime == MimeTypes.VIDEO_AV1) return false
+        if (mime == MimeTypes.VIDEO_DOLBY_VISION && format.codecs?.lowercase()?.let {
+            it.startsWith("dav") || it.contains("av01") || it.contains("av1")
+        } == true) return false
+        return isFormatSupported(format)
     }
 }

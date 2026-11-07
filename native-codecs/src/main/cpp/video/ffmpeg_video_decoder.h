@@ -81,6 +81,8 @@ public:
 
     std::string getLastErrorMessage() const;
 
+    static bool isMimeTypeSupported(const std::string& mimeType);
+
 private:
     void releaseResources();
     int findFreeSlotLocked() const;

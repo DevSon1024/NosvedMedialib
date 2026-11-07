@@ -71,8 +71,26 @@ enum AVCodecID FfmpegVideoDecoder::getCodecIdForMimeType(const std::string& mime
     if (mimeType == "video/x-vnd.on2.vp9") return AV_CODEC_ID_VP9;
     if (mimeType == "video/mp4v-es") return AV_CODEC_ID_MPEG4;
     if (mimeType == "video/mpeg2") return AV_CODEC_ID_MPEG2VIDEO;
-    if (mimeType == "video/wvc1") return AV_CODEC_ID_VC1;
+    if (mimeType == "video/wvc1" || mimeType == "video/x-vc1") return AV_CODEC_ID_VC1;
+    if (mimeType == "video/mpeg" || mimeType == "video/mpeg1") return AV_CODEC_ID_MPEG1VIDEO;
+    if (mimeType == "video/x-theora" || mimeType == "video/theora") return AV_CODEC_ID_THEORA;
+    if (mimeType == "video/x-ffv1" || mimeType == "video/ffv1") return AV_CODEC_ID_FFV1;
+    if (mimeType == "video/x-dnxhd" || mimeType == "video/dnxhd") return AV_CODEC_ID_DNXHD;
+    if (mimeType == "video/3gpp" || mimeType == "video/h263") return AV_CODEC_ID_H263;
+    if (mimeType == "video/x-ms-wmv2") return AV_CODEC_ID_WMV2;
+    if (mimeType == "video/x-ms-wmv" || mimeType == "video/x-ms-wmv3") return AV_CODEC_ID_WMV3;
+    if (mimeType == "video/x-prores" || mimeType == "video/prores") return AV_CODEC_ID_PRORES;
+    if (mimeType == "video/x-pn-realvideo" || mimeType == "video/rv40") return AV_CODEC_ID_RV40;
+    if (mimeType == "video/mjpeg" || mimeType == "video/x-mjpeg") return AV_CODEC_ID_MJPEG;
+    if (mimeType == "video/dolby-vision") return AV_CODEC_ID_HEVC;
     return AV_CODEC_ID_NONE;
+}
+
+bool FfmpegVideoDecoder::isMimeTypeSupported(const std::string& mimeType) {
+    enum AVCodecID codecId = getCodecIdForMimeType(mimeType);
+    if (codecId == AV_CODEC_ID_NONE) return false;
+    const AVCodec* codec = avcodec_find_decoder(codecId);
+    return codec != nullptr;
 }
 
 std::vector<uint8_t> FfmpegVideoDecoder::normalizeExtraData(enum AVCodecID codecId, const uint8_t* extraData, int extraDataSize) {
